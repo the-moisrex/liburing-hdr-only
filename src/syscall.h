@@ -49,4 +49,27 @@ static inline bool IS_ERR(const void *ptr) {
 /* libc syscall wrappers. */
 #include "arch/generic/syscall.h"
 #endif
+
+
+static inline int io_uring_enter(unsigned int fd, unsigned int to_submit,
+                                 unsigned int min_complete, unsigned int flags, sigset_t *sig) noexcept {
+    return __sys_io_uring_enter(fd, to_submit, min_complete, flags, sig);
+}
+
+static inline int io_uring_enter2(unsigned int fd, unsigned int to_submit,
+                                  unsigned int min_complete, unsigned int flags,
+                                  sigset_t *sig, size_t sz) noexcept {
+    return __sys_io_uring_enter2(fd, to_submit, min_complete, flags, sig,
+                                 sz);
+}
+
+static inline int io_uring_setup(unsigned int entries, struct io_uring_params *p) noexcept {
+    return __sys_io_uring_setup(entries, p);
+}
+
+static inline int io_uring_register(unsigned int fd, unsigned int opcode, const void *arg,
+                                    unsigned int nr_args) noexcept {
+    return __sys_io_uring_register(fd, opcode, arg, nr_args);
+}
+
 #endif
