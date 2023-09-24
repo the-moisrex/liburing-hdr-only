@@ -9,7 +9,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 #include "helpers.h"
 
 #define BUF_SIZE    4096

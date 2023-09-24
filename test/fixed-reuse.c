@@ -12,7 +12,7 @@
 #include <string.h>
 #include <fcntl.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 #include "helpers.h"
 
 #define MAX_FILES	8

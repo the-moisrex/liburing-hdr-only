@@ -14,7 +14,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <sys/sysinfo.h>
-#include "liburing.h"
+#include "../src/liburing.h"
 #include "helpers.h"
 
 #include "../src/syscall.h"

@@ -10,7 +10,7 @@
 #include <fcntl.h>
 
 #include "helpers.h"
-#include "liburing.h"
+#include "../src/liburing.h"
 
 static int no_probe;
 

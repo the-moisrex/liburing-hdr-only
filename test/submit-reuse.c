@@ -13,7 +13,7 @@
 #include <sys/time.h>
 
 #include "helpers.h"
-#include "liburing.h"
+#include "../src/liburing.h"
 
 #define STR_SIZE	32768
 #define FILE_SIZE	65536

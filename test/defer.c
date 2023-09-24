@@ -9,7 +9,7 @@
 #include <stdbool.h>
 
 #include "helpers.h"
-#include "liburing.h"
+#include "../src/liburing.h"
 
 #define RING_SIZE 128
 enum {

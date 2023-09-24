@@ -7,7 +7,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <pthread.h>
-#include "liburing.h"
+#include "../src/liburing.h"
 
 #define TIMEOUT_MSEC	200
 #define TIMEOUT_SEC	10

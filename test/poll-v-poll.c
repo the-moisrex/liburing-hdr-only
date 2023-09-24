@@ -16,7 +16,7 @@
 #include <pthread.h>
 #include <sys/epoll.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 
 struct thread_data {
 	struct io_uring *ring;

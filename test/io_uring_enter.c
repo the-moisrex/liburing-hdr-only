@@ -25,7 +25,7 @@
 #include <sys/time.h>
 
 #include "helpers.h"
-#include "liburing.h"
+#include "../src/liburing.h"
 #include "liburing/barrier.h"
 #include "../src/syscall.h"
 

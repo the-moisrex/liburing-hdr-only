@@ -12,7 +12,7 @@
 #include <poll.h>
 #include <sys/eventfd.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 
 enum {
 	TEST_OK,

@@ -15,7 +15,7 @@
 #include <pthread.h>
 
 #include "helpers.h"
-#include "liburing.h"
+#include "../src/liburing.h"
 
 #define NR_IOS	8
 #define WSIZE	512

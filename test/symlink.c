@@ -9,7 +9,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 
 
 static int do_symlinkat(struct io_uring *ring, const char *oldname, const char *newname)

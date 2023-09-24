@@ -11,7 +11,7 @@
 #include <fcntl.h>
 
 #include "helpers.h"
-#include "liburing.h"
+#include "../src/liburing.h"
 
 static void close_files(int *files, int nr_files, int add)
 {

@@ -8,7 +8,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 #include "helpers.h"
 
 static int test(struct io_uring *ring, int expect_drops)

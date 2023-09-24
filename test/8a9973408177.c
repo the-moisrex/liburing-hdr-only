@@ -6,7 +6,7 @@
 #include <string.h>
 #include <fcntl.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 #include "helpers.h"
 
 static int register_file(struct io_uring *ring)

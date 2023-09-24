@@ -12,7 +12,7 @@
 #include <assert.h>
 
 #include "helpers.h"
-#include "liburing.h"
+#include "../src/liburing.h"
 
 #define FILE_SIZE 5000
 #define QUEUE_SIZE 2048

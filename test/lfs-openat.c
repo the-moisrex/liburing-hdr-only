@@ -10,7 +10,7 @@
 #include <sys/resource.h>
 #include <unistd.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 
 #define DIE(...)				\
 	do {					\

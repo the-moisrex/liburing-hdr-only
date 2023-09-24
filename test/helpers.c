@@ -16,7 +16,7 @@
 #include <netinet/tcp.h>
 
 #include "helpers.h"
-#include "liburing.h"
+#include "../src/liburing.h"
 
 /*
  * Helper for allocating memory in tests.

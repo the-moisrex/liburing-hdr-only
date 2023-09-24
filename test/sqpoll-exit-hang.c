@@ -9,7 +9,7 @@
 #include <unistd.h>
 #include <sys/time.h>
 #include <poll.h>
-#include "liburing.h"
+#include "../src/liburing.h"
 
 static unsigned long long mtime_since(const struct timeval *s,
 				      const struct timeval *e)

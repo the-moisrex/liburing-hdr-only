@@ -14,7 +14,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #include <poll.h>
-#include "liburing.h"
+#include "../src/liburing.h"
 #include "helpers.h"
 
 #define BACKLOG 512

@@ -10,7 +10,7 @@
 #include <string.h>
 #include <fcntl.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 
 #define MAX_ENTRIES	32768
 

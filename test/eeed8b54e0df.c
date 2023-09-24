@@ -11,7 +11,7 @@
 #include <fcntl.h>
 
 #include "helpers.h"
-#include "liburing.h"
+#include "../src/liburing.h"
 
 #define BLOCK	4096
 

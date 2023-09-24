@@ -17,7 +17,7 @@
 #include <sys/ioctl.h>
 #include <sys/timerfd.h>
 #include <poll.h>
-#include "liburing.h"
+#include "../src/liburing.h"
 
 #define QD	64
 #define BS	1024

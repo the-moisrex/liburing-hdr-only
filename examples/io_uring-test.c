@@ -12,7 +12,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include "liburing.h"
+#include "../src/liburing.h"
 
 #define QD	4
 

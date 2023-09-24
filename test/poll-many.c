@@ -13,7 +13,7 @@
 #include <sys/resource.h>
 #include <fcntl.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 #include "helpers.h"
 
 #define	NFILES	5000

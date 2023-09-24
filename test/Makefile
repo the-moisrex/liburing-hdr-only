@@ -3,17 +3,12 @@ datadir ?= $(prefix)/share
 
 INSTALL=install
 
-ifneq ($(MAKECMDGOALS),clean)
-include ../config-host.mak
-endif
-
 CPPFLAGS ?=
 
 override CPPFLAGS += \
 	-D_GNU_SOURCE \
 	-D__SANE_USERSPACE_TYPES__ \
-	-I../src/include/ \
-	-include ../config-host.h \
+	-I../src/ \
 	-D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
 
 CFLAGS ?= -g -O3 -Wall -Wextra
@@ -28,11 +23,11 @@ ifdef CONFIG_HAVE_ARRAY_BOUNDS
 endif
 
 CXXFLAGS ?= $(CFLAGS)
-override CFLAGS += $(XCFLAGS) -DLIBURING_BUILD_TEST
-override CXXFLAGS += $(XCFLAGS) -std=c++11 -DLIBURING_BUILD_TEST
+override CFLAGS += $(XCFLAGS) -DLIBURING_BUILD_TEST -Wall -Wextra -std=c17 -pedantic
+override CXXFLAGS += $(XCFLAGS) -std=c++17 -DLIBURING_BUILD_TEST -Wall -Wextra
 
 LDFLAGS ?=
-override LDFLAGS += -L../src/ -luring -lpthread
+override LDFLAGS += -L../src/ -lpthread
 
 # Please keep this list sorted alphabetically.
 test_srcs := \
@@ -199,7 +194,6 @@ test_srcs := \
 	# EOL
 
 all_targets :=
-include ../Makefile.quiet
 
 ifdef CONFIG_HAVE_STATX
 	test_srcs += statx.c

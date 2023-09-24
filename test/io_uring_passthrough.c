@@ -9,7 +9,7 @@
 #include <string.h>
 
 #include "helpers.h"
-#include "liburing.h"
+#include "../src/liburing.h"
 #include "../src/syscall.h"
 #include "nvme.h"
 

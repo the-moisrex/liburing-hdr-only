@@ -12,7 +12,7 @@
 #include <sys/socket.h>
 #include <pthread.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 #include "helpers.h"
 
 static char str[] = "This is a test of send and recv over io_uring!";

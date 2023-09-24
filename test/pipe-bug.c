@@ -12,7 +12,7 @@
 #include <unistd.h>
 
 #include "helpers.h"
-#include "liburing.h"
+#include "../src/liburing.h"
 
 #define CHECK(x)								\
 do {										\

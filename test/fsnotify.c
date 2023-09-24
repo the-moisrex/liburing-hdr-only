@@ -14,7 +14,7 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 
 int main(int argc, char *argv[])
 {

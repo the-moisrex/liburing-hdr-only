@@ -2,6 +2,7 @@
 *.orig
 *~
 /*.patch
+.idea
 
 *.d
 *.o

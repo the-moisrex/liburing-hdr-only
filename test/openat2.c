@@ -12,7 +12,7 @@
 #include <sys/uio.h>
 
 #include "helpers.h"
-#include "liburing.h"
+#include "../src/liburing.h"
 
 static int test_openat2(struct io_uring *ring, const char *path, int dfd,
 			bool direct, int fixed_index)

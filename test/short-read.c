@@ -10,7 +10,7 @@
 
 
 #include "helpers.h"
-#include "liburing.h"
+#include "../src/liburing.h"
 
 #define BUF_SIZE 4096
 #define FILE_SIZE 1024

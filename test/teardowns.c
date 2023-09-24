@@ -8,7 +8,7 @@
 #include <unistd.h>
 #include <errno.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 
 static void loop(void)
 {

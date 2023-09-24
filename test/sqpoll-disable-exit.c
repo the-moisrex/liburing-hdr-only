@@ -21,7 +21,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 #include "../src/syscall.h"
 
 static void sleep_ms(uint64_t ms)

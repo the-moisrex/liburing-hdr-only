@@ -17,7 +17,7 @@
 #include <stdlib.h>
 #include <arpa/inet.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 #include "helpers.h"
 
 static unsigned long ud;

@@ -10,7 +10,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <string.h>
-#include "liburing.h"
+#include "../src/liburing.h"
 
 #define BUFSIZE	512
 

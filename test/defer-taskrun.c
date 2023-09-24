@@ -12,7 +12,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 #include "test.h"
 #include "helpers.h"
 

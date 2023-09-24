@@ -40,7 +40,7 @@
 #include <sys/mman.h>
 #include <linux/mman.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 
 #define ZC_TAG 0xfffffffULL
 #define MAX_SUBMIT_NR 512

@@ -20,7 +20,7 @@
 #include <sys/eventfd.h>
 #include <pthread.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 #include "../src/syscall.h"
 
 enum {

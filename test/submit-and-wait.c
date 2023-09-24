@@ -12,7 +12,7 @@
 #include <fcntl.h>
 #include <sys/time.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 #include "test.h"
 
 static unsigned long long mtime_since(const struct timeval *s,

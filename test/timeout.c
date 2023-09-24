@@ -15,7 +15,7 @@
 #include <sys/stat.h>
 
 #include "helpers.h"
-#include "liburing.h"
+#include "../src/liburing.h"
 #include "../src/syscall.h"
 
 #define TIMEOUT_MSEC	200

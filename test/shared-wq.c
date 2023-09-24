@@ -9,7 +9,7 @@
 #include <string.h>
 #include <fcntl.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 
 static int test_attach_invalid(int ringfd)
 {

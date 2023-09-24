@@ -8,7 +8,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <sys/time.h>
-#include "liburing.h"
+#include "../src/liburing.h"
 
 struct thread_data {
 	struct io_uring *ring;

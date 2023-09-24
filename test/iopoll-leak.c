@@ -11,7 +11,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include "helpers.h"
-#include "liburing.h"
+#include "../src/liburing.h"
 
 #define FILE_SIZE	(128 * 1024)
 #define BS		4096

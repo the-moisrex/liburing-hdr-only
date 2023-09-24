@@ -9,7 +9,7 @@
 #include <poll.h>
 #include <sys/wait.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 #include "helpers.h"
 
 static int check_final_cqe(struct io_uring *ring)

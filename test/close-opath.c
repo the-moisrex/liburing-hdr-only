@@ -20,7 +20,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 
 typedef struct
 {

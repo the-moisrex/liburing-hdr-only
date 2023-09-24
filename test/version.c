@@ -3,7 +3,7 @@
  * Description: check version macros and runtime checks work
  *
  */
-#include "liburing.h"
+#include "../src/liburing.h"
 #include "helpers.h"
 
 int main(int argc, char *argv[])

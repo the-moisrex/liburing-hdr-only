@@ -12,7 +12,7 @@
 #include <string.h>
 
 #include "helpers.h"
-#include "liburing.h"
+#include "../src/liburing.h"
 
 #define FILE_SIZE	(128 * 1024)
 

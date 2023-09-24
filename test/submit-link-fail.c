@@ -10,7 +10,7 @@
 #include <fcntl.h>
 #include <assert.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 
 #define DRAIN_USER_DATA 42
 

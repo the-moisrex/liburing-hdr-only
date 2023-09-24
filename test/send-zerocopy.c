@@ -35,7 +35,7 @@
 #include <sys/mman.h>
 #include <linux/mman.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 #include "helpers.h"
 
 #define MAX_MSG	128

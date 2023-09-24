@@ -22,7 +22,7 @@
 #include <arpa/inet.h>
 
 #include "helpers.h"
-#include "liburing.h"
+#include "../src/liburing.h"
 
 #define RECV_BUFF_SIZE 2
 #define SEND_BUFF_SIZE 3

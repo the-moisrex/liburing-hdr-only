@@ -8,7 +8,7 @@
 #include <sys/types.h>
 
 #include "helpers.h"
-#include "liburing.h"
+#include "../src/liburing.h"
 
 #define IOVECS_LEN 2
 

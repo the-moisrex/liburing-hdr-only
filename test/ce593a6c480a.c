@@ -10,7 +10,7 @@
 #include <sys/eventfd.h>
 #include <unistd.h>
 #include <pthread.h>
-#include "liburing.h"
+#include "../src/liburing.h"
 #include "helpers.h"
 
 static int use_sqpoll = 0;

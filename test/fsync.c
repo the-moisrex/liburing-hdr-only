@@ -11,7 +11,7 @@
 #include <fcntl.h>
 
 #include "helpers.h"
-#include "liburing.h"
+#include "../src/liburing.h"
 
 static int test_single_fsync(struct io_uring *ring)
 {

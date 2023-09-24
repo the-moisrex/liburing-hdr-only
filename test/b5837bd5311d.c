@@ -3,7 +3,7 @@
  * Description: Check to see if wait_nr is being honored.
  */
 #include <stdio.h>
-#include "liburing.h"
+#include "../src/liburing.h"
 #include "helpers.h"
 
 int main(int argc, char *argv[])

@@ -11,7 +11,7 @@
 #include <fcntl.h>
 #include <pthread.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 #include "helpers.h"
 
 static int no_msg;

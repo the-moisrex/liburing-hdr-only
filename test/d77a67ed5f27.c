@@ -4,7 +4,7 @@
 #include <string.h>
 #include <signal.h>
 #include <stdlib.h>
-#include "liburing.h"
+#include "../src/liburing.h"
 #include "helpers.h"
 
 static void sig_alrm(int sig)

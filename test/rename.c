@@ -11,7 +11,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 
 static int test_rename(struct io_uring *ring, const char *old, const char *new)
 {

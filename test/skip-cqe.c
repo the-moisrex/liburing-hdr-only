@@ -7,7 +7,7 @@
 #include <fcntl.h>
 #include <assert.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 #include "helpers.h"
 
 #define LINK_SIZE 		6

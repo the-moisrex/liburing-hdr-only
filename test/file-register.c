@@ -13,7 +13,7 @@
 #include <sys/resource.h>
 
 #include "helpers.h"
-#include "liburing.h"
+#include "../src/liburing.h"
 
 static int no_update = 0;
 

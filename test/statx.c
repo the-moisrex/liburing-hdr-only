@@ -14,7 +14,7 @@
 #include <sys/stat.h>
 
 #include "helpers.h"
-#include "liburing.h"
+#include "../src/liburing.h"
 
 #ifdef __NR_statx
 static int do_statx(int dfd, const char *path, int flags, unsigned mask,

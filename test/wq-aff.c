@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 #include "helpers.h"
 
 #define IOWQ_CPU	0

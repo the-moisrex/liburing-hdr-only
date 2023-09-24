@@ -12,7 +12,7 @@
 #include <limits.h>
 
 #include "helpers.h"
-#include "liburing.h"
+#include "../src/liburing.h"
 
 #define FDS	800
 

@@ -10,7 +10,7 @@
 #include <string.h>
 #include <fcntl.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 #include "test.h"
 
 static int seq;

@@ -12,7 +12,7 @@
 #include <poll.h>
 #include <sys/eventfd.h>
 
-#include "liburing.h"
+#include "../src/liburing.h"
 #include "helpers.h"
 
 static int test(bool defer)

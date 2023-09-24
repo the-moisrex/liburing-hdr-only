@@ -14,7 +14,7 @@
 #include <assert.h>
 
 #include "helpers.h"
-#include "liburing.h"
+#include "../src/liburing.h"
 
 static void do_setsockopt(int fd, int level, int optname, int val)
 {
