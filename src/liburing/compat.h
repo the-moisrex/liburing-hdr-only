@@ -48,10 +48,15 @@ struct open_how {
 #endif
 
 
-#ifndef __cplusplus
+#ifdef __cplusplus
+#define nodiscard [[nodiscard]]
+#define uring_static_cast(To, What) static_cast<To>(What)
+#else
 #define noexcept
 #define constexpr
 #define nullptr NULL
+#define nodiscard
+#define uring_static_cast(To, What) (To)(What)
 #endif
 
 // todo: check for statx
