@@ -265,7 +265,7 @@ IOURINGINLINE int io_uring_register_files_sparse(struct io_uring *ring, unsigned
     };
     int ret, did_increase = 0;
 
-    do {
+    for (;;) {
         ret = do_register(ring, IORING_REGISTER_FILES2, &reg, sizeof(reg));
         if (ret >= 0)
             break;
@@ -275,7 +275,7 @@ IOURINGINLINE int io_uring_register_files_sparse(struct io_uring *ring, unsigned
             continue;
         }
         break;
-    } while (1);
+    }
 
     return ret;
 }
@@ -289,7 +289,7 @@ IOURINGINLINE int io_uring_register_files_tags(struct io_uring *ring, const int 
     };
     int ret, did_increase = 0;
 
-    do {
+    for (;;) {
         ret = do_register(ring, IORING_REGISTER_FILES2, &reg, sizeof(reg));
         if (ret >= 0)
             break;
@@ -299,7 +299,7 @@ IOURINGINLINE int io_uring_register_files_tags(struct io_uring *ring, const int 
             continue;
         }
         break;
-    } while (1);
+    }
 
     return ret;
 }
@@ -308,7 +308,7 @@ IOURINGINLINE int io_uring_register_files(struct io_uring *ring, const int *file
                                           unsigned nr_files) noexcept {
     int ret, did_increase = 0;
 
-    do {
+    for (;;) {
         ret = do_register(ring, IORING_REGISTER_FILES, files, nr_files);
         if (ret >= 0)
             break;
@@ -318,7 +318,7 @@ IOURINGINLINE int io_uring_register_files(struct io_uring *ring, const int *file
             continue;
         }
         break;
-    } while (1);
+    }
 
     return ret;
 }
@@ -463,25 +463,19 @@ IOURINGINLINE int io_uring_register_file_alloc_range(struct io_uring *ring,
  */
 IOURINGINLINE struct io_uring_probe *io_uring_get_probe_ring(struct io_uring *ring) noexcept {
     struct io_uring_probe *probe;
-    size_t len;
-    int r;
 
-    len = sizeof(*probe) + 256 * sizeof(struct io_uring_probe_op);
+    size_t len = sizeof(*probe) + 256 * sizeof(struct io_uring_probe_op);
     probe = malloc(len);
     if (!probe)
-        return
-                nullptr;
-    memset(probe,
-           0, len);
+        return nullptr;
+    memset(probe, 0, len);
 
-    r = io_uring_register_probe(ring, probe, 256);
+    int r = io_uring_register_probe(ring, probe, 256);
     if (r >= 0)
-        return
-                probe;
+        return probe;
 
     free(probe);
-    return
-            nullptr;
+    return nullptr;
 }
 
 /* same as io_uring_get_probe_ring, but takes care of ring init and teardown */
@@ -506,13 +500,13 @@ IOURINGINLINE int io_uring_opcode_supported(const struct io_uring_probe *p,
 #define KERN_MAX_ENTRIES    32768
 #define KERN_MAX_CQ_ENTRIES    (2 * KERN_MAX_ENTRIES)
 
-static inline int internal__fls(int x) {
+IOURINGINLINE int internal__fls(int x) {
     if (!x)
         return 0;
     return uring_static_cast(int, 8) * sizeof(x) - __builtin_clz(x);
 }
 
-static unsigned roundup_pow2(unsigned depth) {
+IOURINGINLINE unsigned roundup_pow2(unsigned depth) {
     return 1U << internal__fls(uring_static_cast(int, depth) - 1);
 }
 
@@ -1462,97 +1456,6 @@ IOURINGINLINE int io_uring_submit_and_wait_timeout(struct io_uring *ring,
     return internal__io_uring_get_cqe(ring, cqe_ptr, to_submit, wait_nr, sigmask);
 }
 
-int io_uring_wait_cqe_timeout(struct io_uring *ring,
-                              struct io_uring_cqe **cqe_ptr,
-                              struct __kernel_timespec *ts);
-
-int io_uring_submit(struct io_uring *ring);
-
-int io_uring_submit_and_wait(struct io_uring *ring, unsigned wait_nr);
-
-int io_uring_submit_and_wait_timeout(struct io_uring *ring,
-                                     struct io_uring_cqe **cqe_ptr,
-                                     unsigned wait_nr,
-                                     struct __kernel_timespec *ts,
-                                     sigset_t *sigmask);
-
-int io_uring_register_buffers(struct io_uring *ring, const struct iovec *iovecs,
-                              unsigned nr_iovecs);
-
-int io_uring_register_buffers_tags(struct io_uring *ring,
-                                   const struct iovec *iovecs,
-                                   const __u64 *tags, unsigned nr);
-
-int io_uring_register_buffers_sparse(struct io_uring *ring, unsigned nr);
-
-int io_uring_register_buffers_update_tag(struct io_uring *ring,
-                                         unsigned off,
-                                         const struct iovec *iovecs,
-                                         const __u64 *tags, unsigned nr);
-
-int io_uring_unregister_buffers(struct io_uring *ring);
-
-int io_uring_register_files(struct io_uring *ring, const int *files,
-                            unsigned nr_files);
-
-int io_uring_register_files_tags(struct io_uring *ring, const int *files,
-                                 const __u64 *tags, unsigned nr);
-
-int io_uring_register_files_sparse(struct io_uring *ring, unsigned nr);
-
-int io_uring_register_files_update_tag(struct io_uring *ring, unsigned off,
-                                       const int *files, const __u64 *tags,
-                                       unsigned nr_files);
-
-int io_uring_unregister_files(struct io_uring *ring);
-
-int io_uring_register_files_update(struct io_uring *ring, unsigned off,
-                                   const int *files, unsigned nr_files);
-
-int io_uring_register_eventfd(struct io_uring *ring, int fd);
-
-int io_uring_register_eventfd_async(struct io_uring *ring, int fd);
-
-int io_uring_unregister_eventfd(struct io_uring *ring);
-
-int io_uring_register_personality(struct io_uring *ring);
-
-int io_uring_unregister_personality(struct io_uring *ring, int id);
-
-int io_uring_register_restrictions(struct io_uring *ring,
-                                   struct io_uring_restriction *res,
-                                   unsigned int nr_res);
-
-int io_uring_enable_rings(struct io_uring *ring);
-
-int internal__io_uring_sqring_wait(struct io_uring *ring);
-
-int io_uring_register_iowq_aff(struct io_uring *ring, size_t cpusz,
-                               const cpu_set_t *mask);
-
-int io_uring_unregister_iowq_aff(struct io_uring *ring);
-
-int io_uring_register_iowq_max_workers(struct io_uring *ring,
-                                       unsigned int *values);
-
-int io_uring_register_ring_fd(struct io_uring *ring);
-
-int io_uring_unregister_ring_fd(struct io_uring *ring);
-
-int io_uring_close_ring_fd(struct io_uring *ring);
-
-int io_uring_register_buf_ring(struct io_uring *ring,
-                               struct io_uring_buf_reg *reg, unsigned int flags);
-
-int io_uring_unregister_buf_ring(struct io_uring *ring, int bgid);
-
-int io_uring_register_sync_cancel(struct io_uring *ring,
-                                  struct io_uring_sync_cancel_reg *reg);
-
-int io_uring_register_file_alloc_range(struct io_uring *ring,
-                                       unsigned off, unsigned len);
-
-int io_uring_submit_and_get_events(struct io_uring *ring);
 
 /*
  * io_uring syscalls.
