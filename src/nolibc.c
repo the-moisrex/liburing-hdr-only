@@ -32,10 +32,10 @@ struct uring_heap {
 void *__uring_malloc(size_t len) {
     struct uring_heap *heap;
 
-    heap = __sys_mmap(NULL, sizeof(*heap) + len, PROT_READ | PROT_WRITE,
+    heap = __sys_mmap(nullptr, sizeof(*heap) + len, PROT_READ | PROT_WRITE,
                       MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
     if (IS_ERR(heap))
-        return NULL;
+        return nullptr;
 
     heap->len = sizeof(*heap) + len;
     return heap->user_p;
