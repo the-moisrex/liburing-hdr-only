@@ -512,7 +512,7 @@ IOURINGINLINE int io_uring_close_ring_fd(struct io_uring* ring) noexcept {
 
 IOURINGINLINE int io_uring_register_buf_ring(struct io_uring*            ring,
                                              struct io_uring_buf_reg*    reg,
-                                             unsigned int __maybe_unused flags) noexcept {
+                                             unsigned int uring__maybe_unused flags) noexcept {
     return do_register(ring, IORING_REGISTER_PBUF_RING, reg, 1);
 }
 
@@ -560,7 +560,7 @@ IOURINGINLINE struct io_uring_probe* io_uring_get_probe_ring(struct io_uring* ri
  * frees a probe allocated through io_uring_get_probe() or
  * io_uring_get_probe_ring()
  */
-__cold IOURINGINLINE void io_uring_free_probe(struct io_uring_probe* probe) noexcept {
+uring__cold IOURINGINLINE void io_uring_free_probe(struct io_uring_probe* probe) noexcept {
     free(probe);
 }
 
@@ -809,7 +809,7 @@ io_uring_mmap(int fd, struct io_uring_params* p, struct io_uring_sq* sq, struct 
  * Returns -errno on error, or zero on success.  On success, 'ring'
  * contains the necessary information to read/write to the rings.
  */
-__cold IOURINGINLINE int
+uring__cold IOURINGINLINE int
 io_uring_queue_mmap(int fd, struct io_uring_params* p, struct io_uring* ring) noexcept {
     memset(ring, 0, sizeof(*ring));
     return io_uring_mmap(fd, p, &ring->sq, &ring->cq);
@@ -916,7 +916,7 @@ io_uring_queue_init_params(unsigned entries, struct io_uring* ring, struct io_ur
  * Returns -errno on error, or zero on success. On success, 'ring'
  * contains the necessary information to read/write to the rings.
  */
-__cold IOURINGINLINE int
+uring__cold IOURINGINLINE int
 io_uring_queue_init(unsigned entries, struct io_uring* ring, unsigned flags) noexcept {
     struct io_uring_params p;
 
@@ -931,7 +931,7 @@ io_uring_queue_init(unsigned entries, struct io_uring* ring, unsigned flags) noe
  * Ensure that the mmap'ed rings aren't available to a child after a fork(2).
  * This uses madvise(..., MADV_DONTFORK) on the mmap'ed ranges.
  */
-__cold IOURINGINLINE int io_uring_ring_dontfork(struct io_uring* ring) noexcept {
+uring__cold IOURINGINLINE int io_uring_ring_dontfork(struct io_uring* ring) noexcept {
 
     if (!ring->sq.ring_ptr || !ring->sq.sqes || !ring->cq.ring_ptr)
         return -EINVAL;
@@ -960,7 +960,7 @@ __cold IOURINGINLINE int io_uring_ring_dontfork(struct io_uring* ring) noexcept 
 }
 
 
-__cold IOURINGINLINE void io_uring_queue_exit(struct io_uring* ring) noexcept {
+uring__cold IOURINGINLINE void io_uring_queue_exit(struct io_uring* ring) noexcept {
     struct io_uring_sq* sq = &ring->sq;
     struct io_uring_cq* cq = &ring->cq;
 
@@ -1562,7 +1562,7 @@ constexpr IOURINGINLINE void io_uring_buf_ring_init(struct io_uring_buf_ring* br
 }
 
 /* same as io_uring_get_probe_ring, but takes care of ring init and teardown */
-__cold IOURINGINLINE struct io_uring_probe* io_uring_get_probe(void) noexcept {
+uring__cold IOURINGINLINE struct io_uring_probe* io_uring_get_probe(void) noexcept {
     struct io_uring        ring;
     struct io_uring_probe* probe;
     int                    r;
@@ -1615,7 +1615,7 @@ IOURINGINLINE size_t rings_size(struct io_uring_params* p,
  * return the required memory so that the caller can ensure that enough space
  * is available before setting up a ring with the specified parameters.
  */
-__cold IOURINGINLINE ssize_t io_uring_mlock_size_params(unsigned                entries,
+uring__cold IOURINGINLINE ssize_t io_uring_mlock_size_params(unsigned                entries,
                                                         struct io_uring_params* p) noexcept {
     struct io_uring_params lp;
     struct io_uring        ring;
@@ -1664,7 +1664,7 @@ __cold IOURINGINLINE ssize_t io_uring_mlock_size_params(unsigned                
  * Return required ulimit -l memory space for a given ring setup. See
  * @io_uring_mlock_size_params().
  */
-__cold IOURINGINLINE ssize_t io_uring_mlock_size(unsigned entries, unsigned flags) noexcept {
+uring__cold IOURINGINLINE ssize_t io_uring_mlock_size(unsigned entries, unsigned flags) noexcept {
     struct io_uring_params p;
 
     memset(&p, 0, sizeof(p));
