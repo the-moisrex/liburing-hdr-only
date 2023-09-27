@@ -21,7 +21,6 @@
 #include <pthread.h>
 
 #include "../include/liburing.h"
-#include "../src/syscall.h"
 
 enum {
 	ACCEPT,

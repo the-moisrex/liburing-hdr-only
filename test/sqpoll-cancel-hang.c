@@ -10,7 +10,6 @@
 #include <unistd.h>
 #include "../include/liburing.h"
 #include "helpers.h"
-#include "../src/syscall.h"
 
 /*
  * This syzbot test is known broken on some archs, just allow the ones that

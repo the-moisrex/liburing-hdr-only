@@ -17,7 +17,6 @@
 
 #include "../include/liburing.h"
 #include "helpers.h"
-#include "../src/syscall.h"
 
 static bool write_file(const char* file, const char* what, ...)
 {

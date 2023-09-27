@@ -14,10 +14,10 @@
 #define _DEFAULT_SOURCE
 
 #include "lib.h"
-#include "liburing/barrier.h"
-#include "liburing/compat.h"
-#include "liburing/io_uring.h"
-#include "liburing/io_uring_version.h"
+#include "barrier.h"
+#include "compat.h"
+#include "io_uring.h"
+#include "io_uring_version.h"
 
 #include <errno.h>
 #include <fcntl.h>

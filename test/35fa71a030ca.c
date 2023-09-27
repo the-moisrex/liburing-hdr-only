@@ -26,7 +26,6 @@
 
 #include "../include/liburing.h"
 #include "helpers.h"
-#include "../src/syscall.h"
 
 #if !defined(SYS_futex) && defined(SYS_futex_time64)
 # define SYS_futex SYS_futex_time64

@@ -22,7 +22,6 @@
 #include <unistd.h>
 
 #include "../include/liburing.h"
-#include "../src/syscall.h"
 
 static void sleep_ms(uint64_t ms)
 {

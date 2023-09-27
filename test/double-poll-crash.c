@@ -16,7 +16,6 @@
 
 #include "../include/liburing.h"
 #include "helpers.h"
-#include "../src/syscall.h"
 
 #define SIZEOF_IO_URING_SQE 64
 #define SIZEOF_IO_URING_CQE 16

@@ -10,7 +10,6 @@
 
 #include "helpers.h"
 #include "../include/liburing.h"
-#include "../src/syscall.h"
 #include "nvme.h"
 
 #define FILE_SIZE	(256 * 1024)

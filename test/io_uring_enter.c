@@ -27,7 +27,6 @@
 #include "helpers.h"
 #include "../include/liburing.h"
 #include "liburing/barrier.h"
-#include "../src/syscall.h"
 
 #define IORING_MAX_ENTRIES 4096
 #define IORING_MAX_ENTRIES_FALLBACK 128

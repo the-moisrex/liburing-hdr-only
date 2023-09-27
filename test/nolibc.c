@@ -30,7 +30,6 @@ int main(void)
 
 #include <stdio.h>
 #include <unistd.h>
-#include "../src/lib.h"
 
 static int test_get_page_size(void)
 {

@@ -16,7 +16,6 @@
 
 #include "helpers.h"
 #include "../include/liburing.h"
-#include "../src/syscall.h"
 
 #define TIMEOUT_MSEC	200
 static int not_supported;

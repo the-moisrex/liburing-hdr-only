@@ -8,7 +8,6 @@
 #include <errno.h>
 #include "../include/liburing.h"
 #include "helpers.h"
-#include "../src/syscall.h"
 
 static struct io_uring io_uring;
 

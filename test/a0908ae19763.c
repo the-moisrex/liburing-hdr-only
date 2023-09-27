@@ -12,7 +12,6 @@
 
 #include "../include/liburing.h"
 #include "helpers.h"
-#include "../src/syscall.h"
 
 static uint64_t r[1] = {0xffffffffffffffff};
 

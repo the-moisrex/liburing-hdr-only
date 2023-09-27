@@ -25,7 +25,6 @@
 
 #include "helpers.h"
 #include "../include/liburing.h"
-#include "../src/syscall.h"
 
 static int pagesize;
 static rlim_t mlock_limit;

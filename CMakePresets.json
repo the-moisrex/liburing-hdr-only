@@ -1,0 +1,104 @@
+{
+    "version": 5,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 23,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "default",
+            "displayName": "Debug Default",
+            "description": "Default build using default cmake generator",
+            "binaryDir": "${sourceDir}/build",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_CXX_STANDARD": "20"
+            }
+        },
+        {
+            "name": "dev-default",
+            "inherits": "default",
+            "displayName": "Default Dev",
+            "description": "Library Development",
+            "binaryDir": "${sourceDir}/build",
+            "cacheVariables": {
+                "LIBURING_DEV": "ON",
+                "CMAKE_CXX_STANDARD": "23"
+            }
+        },
+        {
+            "name": "gcc",
+            "displayName": "Debug GCC",
+            "description": "Default build using Ninja generator",
+            "generator": "Ninja",
+            "inherits": "default",
+            "binaryDir": "${sourceDir}/build-gcc",
+            "cacheVariables": {
+                "CMAKE_CXX_COMPILER": "g++",
+                "CMAKE_C_COMPILER": "gcc",
+                "CMAKE_CXX_STANDARD": "23"
+            }
+        },
+        {
+            "name": "dev-gcc",
+            "inherits": "gcc",
+            "displayName": "GCC Dev",
+            "description": "Development using GCC",
+            "binaryDir": "${sourceDir}/build-dev-gcc",
+            "cacheVariables": {
+                "LIBURING_DEV": "ON"
+            }
+        },
+        {
+            "name": "clang",
+            "inherits": "default",
+            "generator": "Ninja",
+            "displayName": "Clang debug",
+            "description": "Clang build using Ninja generator",
+            "binaryDir": "${sourceDir}/build-clang",
+            "cacheVariables": {
+                "CMAKE_CXX_COMPILER": "clang++",
+                "CMAKE_C_COMPILER": "clang",
+                "CMAKE_CXX_STANDARD": "20"
+            }
+        },
+        {
+            "name": "dev-clang",
+            "inherits": "clang",
+            "displayName": "Clang Dev",
+            "description": "Development using clang",
+            "binaryDir": "${sourceDir}/build-dev-clang",
+            "cacheVariables": {
+                "LIBURING_DEV": "ON"
+            }
+        },
+        {
+            "name": "default-release",
+            "inherits": "default",
+            "displayName": "Default Release",
+            "description": "Default release build using Ninja generator",
+            "binaryDir": "${sourceDir}/build-release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+            "name": "clang-release",
+            "inherits": "clang",
+            "displayName": "Clang Release",
+            "description": "Clang release build using Ninja generator",
+            "binaryDir": "${sourceDir}/build-clang-release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "default-build",
+            "configurePreset": "dev-default",
+            "hidden": true
+        }
+    ]
+}

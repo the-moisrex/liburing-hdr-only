@@ -3,46 +3,53 @@
 #ifndef LIBURING_ARCH_RISCV64_LIB_H
 #define LIBURING_ARCH_RISCV64_LIB_H
 
+#include "./syscall.h"
+
 #include <elf.h>
+#include <errno.h>
+#include <signal.h>
+#include <stdint.h>
 #include <sys/auxv.h>
-#include "../../syscall.h"
+#include <sys/mman.h>
+#include <sys/resource.h>
+#include <sys/syscall.h>
+#include <unistd.h>
 
-static inline long __get_page_size(void)
-{
-	Elf64_Off buf[2];
-	long ret = 4096;
-	int fd;
 
-	fd = __sys_open("/proc/self/auxv", O_RDONLY, 0);
-	if (fd < 0)
-		return ret;
+static inline long __get_page_size(void) {
+    Elf64_Off buf[2];
+    long      ret = 4096;
+    int       fd;
 
-	while (1) {
-		ssize_t x;
+    fd = __sys_open("/proc/self/auxv", O_RDONLY, 0);
+    if (fd < 0)
+        return ret;
 
-		x = __sys_read(fd, buf, sizeof(buf));
-		if (x < (long) sizeof(buf))
-			break;
+    while (1) {
+        ssize_t x;
 
-		if (buf[0] == AT_PAGESZ) {
-			ret = buf[1];
-			break;
-		}
-	}
+        x = __sys_read(fd, buf, sizeof(buf));
+        if (x < (long) sizeof(buf))
+            break;
 
-	__sys_close(fd);
-	return ret;
+        if (buf[0] == AT_PAGESZ) {
+            ret = buf[1];
+            break;
+        }
+    }
+
+    __sys_close(fd);
+    return ret;
 }
 
-static inline long get_page_size(void)
-{
-	static long cache_val;
+static inline long get_page_size(void) {
+    static long cache_val;
 
-	if (cache_val)
-		return cache_val;
+    if (cache_val)
+        return cache_val;
 
-	cache_val = __get_page_size();
-	return cache_val;
+    cache_val = __get_page_size();
+    return cache_val;
 }
 
 #endif /* #ifndef LIBURING_ARCH_RISCV64_LIB_H */

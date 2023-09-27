@@ -11,7 +11,6 @@
 #include <fcntl.h>
 #include <assert.h>
 
-#include "../src/syscall.h"
 #include "helpers.h"
 #include "../include/liburing.h"
 
