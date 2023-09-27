@@ -56,15 +56,15 @@
  */
 struct io_uring_params;
 
-IOURINGINLINE void* ERR_PTR(intptr_t n) noexcept {
+nodiscard IOURINGINLINE void* ERR_PTR(intptr_t n) noexcept {
     return uring_reinterpret_cast(void*, n);
 }
 
-IOURINGINLINE int PTR_ERR(const void* ptr) noexcept {
-    return uring_reinterpret_cast(int, uring_reinterpret_cast(intptr_t, ptr));
+nodiscard IOURINGINLINE int PTR_ERR(const void* ptr) noexcept {
+    return uring_static_cast(int, uring_reinterpret_cast(intptr_t, ptr));
 }
 
-IOURINGINLINE bool IS_ERR(const void* ptr) noexcept {
+nodiscard IOURINGINLINE bool IS_ERR(const void* ptr) noexcept {
     return uring_unlikely(uring_reinterpret_cast(uintptr_t, ptr) >=
                           uring_reinterpret_cast(uintptr_t, -4095UL));
 }

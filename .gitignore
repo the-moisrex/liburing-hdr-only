@@ -4,6 +4,7 @@
 /*.patch
 .idea
 build-*
+cmake-build*
 
 *.d
 *.o
