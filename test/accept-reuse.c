@@ -6,7 +6,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <errno.h>
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 #include "helpers.h"
 #include "../src/syscall.h"
 

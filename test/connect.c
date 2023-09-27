@@ -17,7 +17,7 @@
 #include <arpa/inet.h>
 #include <sys/stat.h>
 
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 #include "helpers.h"
 
 static int no_connect;

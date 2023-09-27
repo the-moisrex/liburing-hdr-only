@@ -10,7 +10,7 @@
 #include <string.h>
 #include <fcntl.h>
 
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 
 static int test_left(void)
 {

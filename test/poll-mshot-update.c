@@ -14,7 +14,7 @@
 #include <fcntl.h>
 #include <pthread.h>
 
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 
 #define	NFILES	5000
 #define BATCH	500

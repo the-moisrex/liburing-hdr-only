@@ -13,7 +13,7 @@
 #include <sys/wait.h>
 #include <signal.h>
 
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 
 struct poll_data {
 	unsigned is_poll;

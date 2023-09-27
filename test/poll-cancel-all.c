@@ -10,7 +10,7 @@
 #include <string.h>
 #include <poll.h>
 
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 
 static int no_cancel_flags;
 

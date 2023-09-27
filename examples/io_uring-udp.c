@@ -9,7 +9,7 @@
 #include <netinet/udp.h>
 #include <arpa/inet.h>
 
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 
 #define QD 64
 #define BUF_SHIFT 12 /* 4k */

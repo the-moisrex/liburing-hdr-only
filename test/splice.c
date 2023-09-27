@@ -8,7 +8,7 @@
 #include <sys/mman.h>
 
 #include "helpers.h"
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 
 #define BUF_SIZE (16 * 4096)
 

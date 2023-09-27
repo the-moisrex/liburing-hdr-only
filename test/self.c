@@ -12,7 +12,7 @@
 #include <string.h>
 #include <fcntl.h>
 
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 
 static int io_openat2(struct io_uring *ring, const char *path, int dfd)
 {

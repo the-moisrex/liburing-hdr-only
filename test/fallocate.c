@@ -14,7 +14,7 @@
 #include <fcntl.h>
 #include <signal.h>
 
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 #include "helpers.h"
 
 static int no_fallocate;

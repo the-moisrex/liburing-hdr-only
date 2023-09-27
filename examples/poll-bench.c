@@ -9,7 +9,7 @@
 #include <sys/time.h>
 #include <sys/wait.h>
 
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 
 static char buf[4096];
 static unsigned long runtime_ms = 10000;

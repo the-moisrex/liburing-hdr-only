@@ -13,7 +13,7 @@
 #include <pthread.h>
 #include <assert.h>
 
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 #include "helpers.h"
 
 static char str[] = "This is a test of send and recv over io_uring!";

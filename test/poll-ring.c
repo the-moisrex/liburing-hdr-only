@@ -12,7 +12,7 @@
 #include <string.h>
 #include <poll.h>
 
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 
 int main(int argc, char *argv[])
 {

@@ -11,7 +11,7 @@
 #include <fcntl.h>
 
 #include "helpers.h"
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 
 #define BLOCKS	4096
 

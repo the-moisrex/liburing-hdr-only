@@ -10,7 +10,7 @@
 #include <sys/epoll.h>
 #include <poll.h>
 #include <stdio.h>
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 #include "helpers.h"
 
 static int setup_signal(void)

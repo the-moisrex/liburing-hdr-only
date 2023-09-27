@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/time.h>
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 
 static unsigned long long mtime_since(const struct timeval *s,
 				      const struct timeval *e)

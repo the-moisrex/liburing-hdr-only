@@ -13,7 +13,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 #include "helpers.h"
 
 static void test(void)

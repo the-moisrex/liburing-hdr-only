@@ -12,7 +12,7 @@
 #include <assert.h>
 
 #include "helpers.h"
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 
 static int submit_wait(struct io_uring *ring)
 {

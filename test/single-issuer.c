@@ -8,7 +8,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 #include "test.h"
 #include "helpers.h"
 

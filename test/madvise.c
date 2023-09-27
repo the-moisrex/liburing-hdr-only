@@ -13,7 +13,7 @@
 #include <sys/mman.h>
 
 #include "helpers.h"
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 
 #define FILE_SIZE	(128 * 1024)
 

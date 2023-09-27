@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <sys/time.h>
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 #include "helpers.h"
 
 static unsigned long long mtime_since(const struct timeval *s,

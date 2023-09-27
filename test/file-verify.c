@@ -15,7 +15,7 @@
 #include <linux/fs.h>
 
 #include "helpers.h"
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 
 #define FSIZE		128*1024*1024
 #define CHUNK_SIZE	131072

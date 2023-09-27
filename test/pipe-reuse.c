@@ -8,7 +8,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <string.h>
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 
 #define BUFSIZE	16384
 #define BUFFERS	16

@@ -21,7 +21,7 @@
 #include <arpa/inet.h>
 
 #include "helpers.h"
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 
 #define MAX_FDS 32
 #define NOP_USER_DATA (1LLU << 50)

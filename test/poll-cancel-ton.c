@@ -13,7 +13,7 @@
 #include <sys/wait.h>
 #include <signal.h>
 
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 
 #define POLL_COUNT	30000
 

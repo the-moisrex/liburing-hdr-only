@@ -13,7 +13,7 @@
 
 #include "../src/syscall.h"
 #include "helpers.h"
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 
 static int pipes[2];
 

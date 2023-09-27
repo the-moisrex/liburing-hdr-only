@@ -13,7 +13,7 @@
 #include <poll.h>
 #include <arpa/inet.h>
 
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 #include "helpers.h"
 
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;

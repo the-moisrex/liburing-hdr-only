@@ -16,7 +16,7 @@
 #include <time.h>
 #include <poll.h>
 
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 #include "helpers.h"
 
 enum {

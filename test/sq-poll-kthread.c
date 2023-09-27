@@ -17,7 +17,7 @@
 #include <sys/wait.h>
 #include <sys/epoll.h>
 
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 #include "helpers.h"
 
 #define SQ_THREAD_IDLE  2000

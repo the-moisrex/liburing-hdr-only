@@ -11,7 +11,7 @@
 #include <linux/sockios.h>
 #include <sys/ioctl.h>
 
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 #include "helpers.h"
 
 #define USERDATA 0x1234

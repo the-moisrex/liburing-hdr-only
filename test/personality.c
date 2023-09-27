@@ -10,7 +10,7 @@
 #include <string.h>
 #include <fcntl.h>
 
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 
 #define FNAME	"/tmp/.tmp.access"
 #define USE_UID	1000

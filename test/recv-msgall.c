@@ -12,7 +12,7 @@
 #include <sys/socket.h>
 #include <pthread.h>
 
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 #include "helpers.h"
 
 #define MAX_MSG	128

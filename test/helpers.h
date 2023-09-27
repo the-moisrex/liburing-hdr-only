@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 #include <arpa/inet.h>
 
 enum t_setup_ret {

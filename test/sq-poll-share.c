@@ -14,7 +14,7 @@
 #include <sys/resource.h>
 
 #include "helpers.h"
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 
 #define FILE_SIZE	(128 * 1024 * 1024)
 #define BS		4096

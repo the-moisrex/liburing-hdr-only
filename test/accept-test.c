@@ -7,7 +7,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <assert.h>
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 #include "helpers.h"
 
 int main(int argc, char *argv[])

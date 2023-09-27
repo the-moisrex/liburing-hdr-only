@@ -13,7 +13,7 @@
 #include <sys/types.h>
 #include <poll.h>
 #include <assert.h>
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 #include "helpers.h"
 
 int main(int argc, char *argv[])

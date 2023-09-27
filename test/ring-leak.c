@@ -22,7 +22,7 @@
 #include <string.h>
 #include <linux/fs.h>
 
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 #include "../src/syscall.h"
 
 static int __io_uring_register_files(int ring_fd, int fd1, int fd2)

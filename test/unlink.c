@@ -11,7 +11,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 
 static int test_unlink(struct io_uring *ring, const char *old)
 {

@@ -24,7 +24,7 @@
 #include <limits.h>
 
 #include "helpers.h"
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 #include "../src/syscall.h"
 
 static int pagesize;

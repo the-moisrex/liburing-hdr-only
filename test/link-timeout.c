@@ -11,7 +11,7 @@
 #include <fcntl.h>
 #include <poll.h>
 
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 #include "helpers.h"
 
 static int test_fail_lone_link_timeouts(struct io_uring *ring)

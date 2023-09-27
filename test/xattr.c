@@ -7,7 +7,7 @@
 #include <unistd.h>
 
 #include "helpers.h"
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 
 static int no_xattr;
 

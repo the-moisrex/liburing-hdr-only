@@ -9,7 +9,7 @@
 #include <pthread.h>
 #include <sys/socket.h>
 
-#include "../src/liburing.h"
+#include "../include/liburing.h"
 #include "helpers.h"
 
 #define NREQS	64
