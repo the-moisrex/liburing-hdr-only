@@ -49,19 +49,19 @@ struct open_how {
 
 
 #ifdef __cplusplus
-#define nodiscard [[nodiscard]]
-#define uring_static_cast(To, What) static_cast<To>(What)
-#define uring_reinterpret_cast(To, What) reinterpret_cast<To>(What)
+#    define nodiscard                        [[nodiscard]]
+#    define uring_static_cast(To, What)      static_cast<To>(What)
+#    define uring_reinterpret_cast(To, What) reinterpret_cast<To>(What)
 #else
-#define noexcept
-#define constexpr
-#define nullptr NULL
-#define nodiscard
-#define uring_static_cast(To, What) (To)(What)
-#define uring_reinterpret_cast(To, What) (To)(What)
+#    define noexcept
+#    define constexpr
+#    define nullptr NULL
+#    define nodiscard
+#    define uring_static_cast(To, What)      (To)(What)
+#    define uring_reinterpret_cast(To, What) (To)(What)
 #endif
 
-#define UNUSED(x) (void)(x)
+#define UNUSED(x) (void) (x)
 // todo: check for statx
 
 #endif

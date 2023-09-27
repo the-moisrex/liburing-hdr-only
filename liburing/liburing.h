@@ -13,11 +13,11 @@
 #define _POSIX_C_SOURCE 200112L
 #define _DEFAULT_SOURCE
 
-#include "lib.h"
 #include "barrier.h"
 #include "compat.h"
 #include "io_uring.h"
 #include "io_uring_version.h"
+#include "lib.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -510,8 +510,8 @@ IOURINGINLINE int io_uring_close_ring_fd(struct io_uring* ring) noexcept {
     return 1;
 }
 
-IOURINGINLINE int io_uring_register_buf_ring(struct io_uring*            ring,
-                                             struct io_uring_buf_reg*    reg,
+IOURINGINLINE int io_uring_register_buf_ring(struct io_uring*                 ring,
+                                             struct io_uring_buf_reg*         reg,
                                              unsigned int uring__maybe_unused flags) noexcept {
     return do_register(ring, IORING_REGISTER_PBUF_RING, reg, 1);
 }
@@ -673,8 +673,12 @@ IOURINGINLINE int io_uring_alloc_huge(unsigned                entries,
             buf_size    = huge_page_size;
             map_hugetlb = MAP_HUGETLB;
         }
-        ptr =
-          __sys_mmap(nullptr, buf_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS | map_hugetlb, -1, 0);
+        ptr = __sys_mmap(nullptr,
+                         buf_size,
+                         PROT_READ | PROT_WRITE,
+                         MAP_SHARED | MAP_ANONYMOUS | map_hugetlb,
+                         -1,
+                         0);
         if (IS_ERR(ptr))
             return PTR_ERR(ptr);
     }
@@ -693,8 +697,12 @@ IOURINGINLINE int io_uring_alloc_huge(unsigned                entries,
             buf_size    = huge_page_size;
             map_hugetlb = MAP_HUGETLB;
         }
-        ptr =
-          __sys_mmap(nullptr, buf_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS | map_hugetlb, -1, 0);
+        ptr = __sys_mmap(nullptr,
+                         buf_size,
+                         PROT_READ | PROT_WRITE,
+                         MAP_SHARED | MAP_ANONYMOUS | map_hugetlb,
+                         -1,
+                         0);
         if (IS_ERR(ptr)) {
             __sys_munmap(sq->sqes, 1);
             return PTR_ERR(ptr);
@@ -1616,7 +1624,7 @@ IOURINGINLINE size_t rings_size(struct io_uring_params* p,
  * is available before setting up a ring with the specified parameters.
  */
 uring__cold IOURINGINLINE ssize_t io_uring_mlock_size_params(unsigned                entries,
-                                                        struct io_uring_params* p) noexcept {
+                                                             struct io_uring_params* p) noexcept {
     struct io_uring_params lp;
     struct io_uring        ring;
     unsigned               cq_entries, sq;

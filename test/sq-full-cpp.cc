@@ -10,8 +10,7 @@
 #include <string.h>
 #include <fcntl.h>
 
-#include "../include/liburing.h"
-
+#include "../liburing/liburing.h"
 int main(int argc, char *argv[])
 {
 	struct io_uring_sqe *sqe;

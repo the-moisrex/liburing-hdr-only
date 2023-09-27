@@ -7,89 +7,84 @@
  * See: https://github.com/axboe/liburing/issues/665
  */
 
+#include "../liburing/liburing.h"
+#include "helpers.h"
+
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#define CHECK(x)                                                          \
+    do {                                                                  \
+        if (!(x)) {                                                       \
+            fprintf(stderr, "%s:%d %s failed\n", __FILE__, __LINE__, #x); \
+            return -1;                                                    \
+        }                                                                 \
+    } while (0)
 
-#include "helpers.h"
-#include "../include/liburing.h"
+static int pipe_bug(void) {
+    struct io_uring_params   p;
+    struct io_uring          ring;
+    struct io_uring_sqe*     sqe;
+    struct io_uring_cqe*     cqe;
+    char                     buf[1024];
+    int                      fds[2];
+    struct __kernel_timespec to = {.tv_sec = 1};
 
-#define CHECK(x)								\
-do {										\
-	if (!(x)) {								\
-		fprintf(stderr, "%s:%d %s failed\n", __FILE__, __LINE__, #x);	\
-		return -1;							\
-	}									\
-} while (0)
+    CHECK(pipe(fds) == 0);
 
-static int pipe_bug(void)
-{
-	struct io_uring_params p;
-	struct io_uring ring;
-	struct io_uring_sqe *sqe;
-	struct io_uring_cqe *cqe;
-	char buf[1024];
-	int fds[2];
-	struct __kernel_timespec to = {
-		.tv_sec = 1
-	};
+    memset(&p, 0, sizeof(p));
+    CHECK(t_create_ring_params(8, &ring, &p) == 0);
 
-	CHECK(pipe(fds) == 0);
+    /* WRITE */
+    sqe = io_uring_get_sqe(&ring);
+    CHECK(sqe);
+    io_uring_prep_write(sqe, fds[1], "foobar", strlen("foobar"), 0); /* or -1 */
+    CHECK(io_uring_submit(&ring) == 1);
+    CHECK(io_uring_wait_cqe(&ring, &cqe) == 0);
 
-	memset(&p, 0, sizeof(p));
-	CHECK(t_create_ring_params(8, &ring, &p) == 0);
+    io_uring_cqe_seen(&ring, cqe);
 
-	/* WRITE */
-	sqe = io_uring_get_sqe(&ring);
-	CHECK(sqe);
-	io_uring_prep_write(sqe, fds[1], "foobar", strlen("foobar"), 0); /* or -1 */
-	CHECK(io_uring_submit(&ring) == 1);
-	CHECK(io_uring_wait_cqe(&ring, &cqe) == 0);
+    /* CLOSE */
+    sqe = io_uring_get_sqe(&ring);
+    CHECK(sqe);
+    io_uring_prep_close(sqe, fds[1]);
+    CHECK(io_uring_submit(&ring) == 1);
+    CHECK(io_uring_wait_cqe_timeout(&ring, &cqe, &to) == 0);
+    io_uring_cqe_seen(&ring, cqe);
 
-	io_uring_cqe_seen(&ring, cqe);
+    /* READ */
+    sqe = io_uring_get_sqe(&ring);
+    CHECK(sqe);
+    io_uring_prep_read(sqe, fds[0], buf, sizeof(buf), 0); /* or -1 */
+    CHECK(io_uring_submit(&ring) == 1);
+    CHECK(io_uring_wait_cqe_timeout(&ring, &cqe, &to) == 0);
+    io_uring_cqe_seen(&ring, cqe);
+    memset(buf, 0, sizeof(buf));
 
-	/* CLOSE */
-	sqe = io_uring_get_sqe(&ring);
-	CHECK(sqe);
-	io_uring_prep_close(sqe, fds[1]);
-	CHECK(io_uring_submit(&ring) == 1);
-	CHECK(io_uring_wait_cqe_timeout(&ring, &cqe, &to) == 0);
-	io_uring_cqe_seen(&ring, cqe);
+    /* READ */
+    sqe = io_uring_get_sqe(&ring);
+    CHECK(sqe);
+    io_uring_prep_read(sqe, fds[0], buf, sizeof(buf), 0); /* or -1 */
+    CHECK(io_uring_submit(&ring) == 1);
+    CHECK(io_uring_wait_cqe_timeout(&ring, &cqe, &to) == 0);
+    io_uring_cqe_seen(&ring, cqe);
 
-	/* READ */
-	sqe = io_uring_get_sqe(&ring);
-	CHECK(sqe);
-	io_uring_prep_read(sqe, fds[0], buf, sizeof(buf), 0); /* or -1 */
-	CHECK(io_uring_submit(&ring) == 1);
-	CHECK(io_uring_wait_cqe_timeout(&ring, &cqe, &to) == 0);
-	io_uring_cqe_seen(&ring, cqe);
-	memset(buf, 0, sizeof(buf));
+    close(fds[0]);
+    io_uring_queue_exit(&ring);
 
-	/* READ */
-	sqe = io_uring_get_sqe(&ring);
-	CHECK(sqe);
-	io_uring_prep_read(sqe, fds[0], buf, sizeof(buf), 0); /* or -1 */
-	CHECK(io_uring_submit(&ring) == 1);
-	CHECK(io_uring_wait_cqe_timeout(&ring, &cqe, &to) == 0);
-	io_uring_cqe_seen(&ring, cqe);
-
-	close(fds[0]);
-	io_uring_queue_exit(&ring);
-
-	return 0;
+    return 0;
 }
 
-int main(int argc, char *argv[])
-{
-	int i;
+int main(int argc, char* argv[]) {
+    int i;
 
-	if (argc > 1)
-		return T_EXIT_SKIP;
+    if (argc > 1)
+        return T_EXIT_SKIP;
 
-	for (i = 0; i < 10000; i++) {
-		if (pipe_bug())
-			return T_EXIT_FAIL;
-	}
+    for (i = 0; i < 10000; i++) {
+        if (pipe_bug())
+            return T_EXIT_FAIL;
+    }
 
-	return T_EXIT_PASS;
+    return T_EXIT_PASS;
 }

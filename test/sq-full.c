@@ -3,43 +3,40 @@
  * Description: test SQ queue full condition
  *
  */
+#include "../liburing/liburing.h"
+
 #include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
-#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
-#include <fcntl.h>
+#include <unistd.h>
+int main(int argc, char* argv[]) {
+    struct io_uring_sqe* sqe;
+    struct io_uring      ring;
+    int                  ret, i;
 
-#include "../include/liburing.h"
+    if (argc > 1)
+        return 0;
 
-int main(int argc, char *argv[])
-{
-	struct io_uring_sqe *sqe;
-	struct io_uring ring;
-	int ret, i;
+    ret = io_uring_queue_init(8, &ring, 0);
+    if (ret) {
+        fprintf(stderr, "ring setup failed: %d\n", ret);
+        return 1;
+    }
 
-	if (argc > 1)
-		return 0;
+    i = 0;
+    while ((sqe = io_uring_get_sqe(&ring)) != NULL)
+        i++;
 
-	ret = io_uring_queue_init(8, &ring, 0);
-	if (ret) {
-		fprintf(stderr, "ring setup failed: %d\n", ret);
-		return 1;
+    if (i != 8) {
+        fprintf(stderr, "Got %d SQEs, wanted 8\n", i);
+        goto err;
+    }
 
-	}
-
-	i = 0;
-	while ((sqe = io_uring_get_sqe(&ring)) != NULL)
-		i++;
-
-	if (i != 8) {
-		fprintf(stderr, "Got %d SQEs, wanted 8\n", i);
-		goto err;
-	}
-
-	io_uring_queue_exit(&ring);
-	return 0;
+    io_uring_queue_exit(&ring);
+    return 0;
 err:
-	io_uring_queue_exit(&ring);
-	return 1;
+    io_uring_queue_exit(&ring);
+    return 1;
 }

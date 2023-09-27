@@ -11,51 +11,51 @@
  */
 #include "helpers.h"
 
-#if !defined(__x86_64__) && !defined(__i386__) && !defined(__aarch64__) && (!defined(__riscv) && __riscv_xlen != 64)
+#if !defined(__x86_64__) && !defined(__i386__) && !defined(__aarch64__) && \
+  (!defined(__riscv) && __riscv_xlen != 64)
 
 
 /*
  * This arch doesn't support nolibc.
  */
-int main(void)
-{
-	return T_EXIT_SKIP;
+int main(void) {
+    return T_EXIT_SKIP;
 }
 
-#else /* #if !defined(__x86_64__) && !defined(__i386__) && !defined(__aarch64__) && (!defined(__riscv) && __riscv_xlen != 64) */
+#else /* #if !defined(__x86_64__) && !defined(__i386__) && !defined(__aarch64__) && (!defined(__riscv) && \
+         __riscv_xlen != 64) */
 
-#ifndef CONFIG_NOLIBC
-#define CONFIG_NOLIBC
-#endif
+#    ifndef CONFIG_NOLIBC
+#        define CONFIG_NOLIBC
+#    endif
 
-#include <stdio.h>
-#include <unistd.h>
+#    include <stdio.h>
+#    include <unistd.h>
 
-static int test_get_page_size(void)
-{
-	long a, b;
+static int test_get_page_size(void) {
+    long a, b;
 
-	a = sysconf(_SC_PAGESIZE);
-	b = get_page_size();
-	if (a != b) {
-		fprintf(stderr, "get_page_size() fails, %ld != %ld", a, b);
-		return -1;
-	}
-	return 0;
+    a = sysconf(_SC_PAGESIZE);
+    b = get_page_size();
+    if (a != b) {
+        fprintf(stderr, "get_page_size() fails, %ld != %ld", a, b);
+        return -1;
+    }
+    return 0;
 }
 
-int main(int argc, char *argv[])
-{
-	int ret;
+int main(int argc, char* argv[]) {
+    int ret;
 
-	if (argc > 1)
-		return T_EXIT_SKIP;
+    if (argc > 1)
+        return T_EXIT_SKIP;
 
-	ret = test_get_page_size();
-	if (ret)
-		return T_EXIT_FAIL;
+    ret = test_get_page_size();
+    if (ret)
+        return T_EXIT_FAIL;
 
-	return T_EXIT_PASS;
+    return T_EXIT_PASS;
 }
 
-#endif /* #if !defined(__x86_64__) && !defined(__i386__) && !defined(__aarch64__) && (!defined(__riscv) && __riscv_xlen != 64) */
+#endif /* #if !defined(__x86_64__) && !defined(__i386__) && !defined(__aarch64__) && (!defined(__riscv) && \
+          __riscv_xlen != 64) */

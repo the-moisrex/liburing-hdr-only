@@ -9,12 +9,10 @@ build-*
 *.o
 *.o[ls]
 
-/include/liburing.a
-/include/liburing.so*
-/include/liburing-ffi.a
-/include/liburing-ffi.so*
-/include/include/liburing/compat.h
-/include/include/liburing/io_uring_version.h
+/liburing/liburing.a
+/liburing/liburing.so*
+/liburing/liburing-ffi.a
+/liburing/liburing-ffi.so*
 
 /examples/io_uring-close-test
 /examples/io_uring-cp

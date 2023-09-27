@@ -1,8 +1,8 @@
 CPPFLAGS ?=
-override CPPFLAGS += -D_GNU_SOURCE -I../include/
+override CPPFLAGS += -D_GNU_SOURCE -I../liburing/
 CFLAGS ?= -g -O2 -Wall
 LDFLAGS ?=
-override LDFLAGS += -L../include/
+override LDFLAGS += -L../liburing/
 
 include ../Makefile.quiet
 
@@ -11,7 +11,7 @@ include ../config-host.mak
 endif
 
 LDFLAGS ?=
-override LDFLAGS += -L../include/ -lpthread
+override LDFLAGS += -L../liburing/ -lpthread
 
 example_srcs := \
 	io_uring-close-test.c \
@@ -37,7 +37,7 @@ all_targets += $(example_targets)
 
 all: $(example_targets)
 
-%: %.c ../include
+%: %.c ../liburing
 	$(QUIET_CC)$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ $< $(LDFLAGS)
 
 clean:

@@ -8,7 +8,7 @@ CPPFLAGS ?=
 override CPPFLAGS += \
 	-D_GNU_SOURCE \
 	-D__SANE_USERSPACE_TYPES__ \
-	-I../src/ \
+	-I../liburing/ \
 	-D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
 
 CFLAGS ?= -g -O3 -Wall -Wextra
@@ -27,7 +27,7 @@ override CFLAGS += $(XCFLAGS) -DLIBURING_BUILD_TEST -Wall -Wextra -std=c17 -peda
 override CXXFLAGS += $(XCFLAGS) -std=c++17 -DLIBURING_BUILD_TEST -Wall -Wextra
 
 LDFLAGS ?=
-override LDFLAGS += -L../src/ -lpthread
+override LDFLAGS += -L../liburing/ -lpthread
 
 # Please keep this list sorted alphabetically.
 test_srcs := \
@@ -220,7 +220,7 @@ all: $(test_targets)
 helpers.o: helpers.c
 	$(QUIET_CC)$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ -c $<
 
-LIBURING := $(shell if [ -e ../src/liburing.a ]; then echo ../src/liburing.a; fi)
+LIBURING := $(shell if [ -e ../liburing/liburing.a ]; then echo ../liburing/liburing.a; fi)
 
 %.t: %.c $(helpers) helpers.h $(LIBURING)
 	$(QUIET_CC)$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ $< $(helpers) $(LDFLAGS)
