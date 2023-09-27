@@ -4,7 +4,8 @@
  * right value (submit count) and that it doesn't end up waiting twice.
  *
  */
-#include "../liburing/liburing.h" #include "test.h"
+#include "../liburing/liburing.h"
+#include "test.h"
 
 #include <errno.h>
 #include <fcntl.h>

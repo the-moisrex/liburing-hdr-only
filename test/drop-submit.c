@@ -3,7 +3,8 @@
  * Description: test IORING_SETUP_SUBMIT_ALL
  *
  */
-#include "../liburing/liburing.h" #include "helpers.h"
+#include "../liburing/liburing.h"
+#include "helpers.h"
 
 #include <errno.h>
 #include <stdio.h>

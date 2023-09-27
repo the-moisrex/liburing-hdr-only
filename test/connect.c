@@ -3,7 +3,8 @@
  * Check that IORING_OP_CONNECT works, with and without other side
  * being open.
  */
-#include "../liburing/liburing.h" #include "helpers.h"
+#include "../liburing/liburing.h"
+#include "helpers.h"
 
 #include <arpa/inet.h>
 #include <errno.h>

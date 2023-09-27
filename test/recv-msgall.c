@@ -2,7 +2,8 @@
 /*
  * Test MSG_WAITALL with datagram sockets, with a send splice into two.
  */
-#include "../liburing/liburing.h" #include "helpers.h"
+#include "../liburing/liburing.h"
+#include "helpers.h"
 
 #include <arpa/inet.h>
 #include <errno.h>

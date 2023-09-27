@@ -3,7 +3,8 @@
  * Check that writev on a socket that has been shutdown(2) fails
  *
  */
-#include "../liburing/liburing.h" #include "helpers.h"
+#include "../liburing/liburing.h"
+#include "helpers.h"
 
 #include <arpa/inet.h>
 #include <assert.h>

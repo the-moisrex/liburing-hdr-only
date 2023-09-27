@@ -3,7 +3,8 @@
  * Description: test io_uring_register_sync_cancel()
  *
  */
-#include "../liburing/liburing.h" #include "helpers.h"
+#include "../liburing/liburing.h"
+#include "helpers.h"
 
 #include <errno.h>
 #include <fcntl.h>

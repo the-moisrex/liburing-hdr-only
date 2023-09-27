@@ -4,7 +4,8 @@
  * Bug was fixed in 5.5 by (commit: 561fb04 io_uring: replace workqueue usage with io-wq")
  * Affects 5.4 lts branch, at least 5.4.106 is affected.
  */
-#include "../liburing/liburing.h" #include "helpers.h"
+#include "../liburing/liburing.h"
+#include "helpers.h"
 
 #include <assert.h>
 #include <errno.h>

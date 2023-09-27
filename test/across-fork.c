@@ -2,7 +2,8 @@
 /*
  * Description: test sharing a ring across a fork
  */
-#include "../liburing/liburing.h" #include "helpers.h"
+#include "../liburing/liburing.h"
+#include "helpers.h"
 
 #include <fcntl.h>
 #include <pthread.h>

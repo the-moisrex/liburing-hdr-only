@@ -3,7 +3,8 @@
  * Check that a readv on a nonblocking socket queued before a writev doesn't
  * wait for data to arrive.
  */
-#include "../liburing/liburing.h" #include "helpers.h"
+#include "../liburing/liburing.h"
+#include "helpers.h"
 
 #include <arpa/inet.h>
 #include <assert.h>

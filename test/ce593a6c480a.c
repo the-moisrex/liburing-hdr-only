@@ -3,7 +3,8 @@
  * Test 5.7 regression with task_work not being run while a task is
  * waiting on another event in the kernel.
  */
-#include "../liburing/liburing.h" #include "helpers.h"
+#include "../liburing/liburing.h"
+#include "helpers.h"
 
 #include <errno.h>
 #include <poll.h>

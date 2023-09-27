@@ -2,7 +2,8 @@
 /*
  * Test alloc hint sanity after unregistering the file table
  */
-#include "../liburing/liburing.h" #include "helpers.h"
+#include "../liburing/liburing.h"
+#include "helpers.h"
 
 #include <stdio.h>
 #include <sys/socket.h>

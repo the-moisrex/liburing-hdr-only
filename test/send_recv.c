@@ -2,7 +2,8 @@
 /*
  * Simple test case showing using send and recv through io_uring
  */
-#include "../liburing/liburing.h" #include "helpers.h"
+#include "../liburing/liburing.h"
+#include "helpers.h"
 
 #include <arpa/inet.h>
 #include <errno.h>

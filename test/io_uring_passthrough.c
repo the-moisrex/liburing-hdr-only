@@ -2,8 +2,9 @@
 /*
  * Description: basic read/write tests for io_uring passthrough commands
  */
-#include "../liburing/liburing.h" #include "nvme.h"
+#include "../liburing/liburing.h"
 #include "helpers.h"
+#include "nvme.h"
 
 #include <errno.h>
 #include <stdio.h>

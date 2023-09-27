@@ -7,7 +7,8 @@
  * Copyright 2019, Red Hat, Inc.
  * Author: Jeff Moyer <jmoyer@redhat.com>
  */
-#include "../liburing/liburing.h" #include "helpers.h"
+#include "../liburing/liburing.h"
+#include "helpers.h"
 
 #include <errno.h>
 #include <fcntl.h>

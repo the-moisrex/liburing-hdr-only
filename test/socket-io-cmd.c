@@ -2,7 +2,8 @@
 /*
  * Check that CMD operations on sockets are consistent.
  */
-#include "../liburing/liburing.h" #include "helpers.h"
+#include "../liburing/liburing.h"
+#include "helpers.h"
 
 #include <assert.h>
 #include <linux/sockios.h>

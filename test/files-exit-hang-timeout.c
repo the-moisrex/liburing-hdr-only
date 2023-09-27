@@ -4,7 +4,8 @@
  * hanging if we have the task file table pinned by a request that is linked
  * to another request that doesn't finish.
  */
-#include "../liburing/liburing.h" #include "helpers.h"
+#include "../liburing/liburing.h"
+#include "helpers.h"
 
 #include <errno.h>
 #include <fcntl.h>

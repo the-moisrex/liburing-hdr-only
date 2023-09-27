@@ -9,7 +9,9 @@
 extern "C" {
 #endif
 
-#include "../liburing/liburing.h" #include < arpa / inet.h>
+#include "../liburing/liburing.h"
+
+#include <arpa/inet.h>
 
 enum t_setup_ret {
     T_SETUP_OK = 0,

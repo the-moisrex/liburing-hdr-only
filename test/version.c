@@ -3,7 +3,8 @@
  * Description: check version macros and runtime checks work
  *
  */
-#include "../liburing/liburing.h" #include "helpers.h"
+#include "../liburing/liburing.h"
+#include "helpers.h"
 
 int main(int argc, char* argv[]) {
     if (!IO_URING_CHECK_VERSION(io_uring_major_version(), io_uring_minor_version()))

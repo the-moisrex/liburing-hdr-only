@@ -3,7 +3,8 @@
  * Description: check that multiple receives on the same socket don't get
  *		stalled if multiple wakers race with the socket readiness.
  */
-#include "../liburing/liburing.h" #include "helpers.h"
+#include "../liburing/liburing.h"
+#include "helpers.h"
 
 #include <pthread.h>
 #include <stdio.h>

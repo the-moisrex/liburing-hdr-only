@@ -2,7 +2,8 @@
 /*
  * Test if entering with nothing to submit/wait for SQPOLL returns an error.
  */
-#include "../liburing/liburing.h" #include "helpers.h"
+#include "../liburing/liburing.h"
+#include "helpers.h"
 
 #include <errno.h>
 #include <stdio.h>

@@ -5,7 +5,8 @@
  *
  * Original test case from: https://github.com/axboe/liburing/issues/582
  */
-#include "../liburing/liburing.h" #include "helpers.h"
+#include "../liburing/liburing.h"
+#include "helpers.h"
 
 #include <pthread.h>
 #include <stdio.h>

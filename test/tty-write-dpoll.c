@@ -9,7 +9,8 @@
  *   io_uring: fix assuming triggered poll waitqueue is the single poll
  *
  */
-#include "../liburing/liburing.h" #include "helpers.h"
+#include "../liburing/liburing.h"
+#include "helpers.h"
 
 #include <errno.h>
 #include <fcntl.h>

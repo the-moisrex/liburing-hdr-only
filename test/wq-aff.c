@@ -2,7 +2,8 @@
 /*
  * Description: test that io-wq affinity is correctly set for SQPOLL
  */
-#include "../liburing/liburing.h" #include "helpers.h"
+#include "../liburing/liburing.h"
+#include "helpers.h"
 
 #include <fcntl.h>
 #include <stdio.h>

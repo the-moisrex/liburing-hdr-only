@@ -2,7 +2,8 @@
 /*
  * Simple test case using the socket op
  */
-#include "../liburing/liburing.h" #include "helpers.h"
+#include "../liburing/liburing.h"
+#include "helpers.h"
 
 #include <arpa/inet.h>
 #include <assert.h>
