@@ -68,13 +68,14 @@ struct open_how {
 #ifdef __cplusplus
 #    include <iterator>
 template <typename T>
-[[nodiscard]] constexpr auto next_ptr(T* ptr, std::size_t n = 1) noexcept {
+[[nodiscard]] static constexpr auto
+next_ptr(T* ptr, typename std::iterator_traits<T*>::difference_type n = 1) noexcept {
     return std::next(ptr, n);
 }
-[[nodiscard]] auto next_ptr(void const* ptr, std::size_t n = 1) noexcept {
+[[nodiscard]] static inline auto next_ptr(void const* ptr, std::ptrdiff_t n = 1) noexcept {
     return std::next(reinterpret_cast<std::intptr_t const*>(ptr), n);
 }
-[[nodiscard]] auto next_ptr(void* ptr, std::size_t n = 1) noexcept {
+[[nodiscard]] static inline auto next_ptr(void* ptr, std::ptrdiff_t n = 1) noexcept {
     return std::next(reinterpret_cast<std::intptr_t*>(ptr), n);
 }
 #else
