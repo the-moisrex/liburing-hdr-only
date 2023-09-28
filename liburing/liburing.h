@@ -56,15 +56,15 @@
  */
 struct io_uring_params;
 
-nodiscard IOURINGINLINE void* ERR_PTR(intptr_t n) noexcept {
+uring_nodiscard IOURINGINLINE void* ERR_PTR(intptr_t n) noexcept {
     return uring_reinterpret_cast(void*, n);
 }
 
-nodiscard IOURINGINLINE int PTR_ERR(const void* ptr) noexcept {
+uring_nodiscard IOURINGINLINE int PTR_ERR(const void* ptr) noexcept {
     return uring_static_cast(int, uring_reinterpret_cast(intptr_t, ptr));
 }
 
-nodiscard IOURINGINLINE bool IS_ERR(const void* ptr) noexcept {
+uring_nodiscard IOURINGINLINE bool IS_ERR(const void* ptr) noexcept {
     return uring_unlikely(uring_reinterpret_cast(uintptr_t, ptr) >=
                           uring_reinterpret_cast(uintptr_t, -4095UL));
 }
@@ -1001,7 +1001,7 @@ IOURINGINLINE unsigned io_uring_cq_ready(const struct io_uring* ring) noexcept {
     return io_uring_smp_load_acquire(ring->cq.ktail) - *ring->cq.khead;
 }
 
-nodiscard IOURINGINLINE bool cq_ring_needs_flush(struct io_uring* ring) noexcept {
+uring_nodiscard IOURINGINLINE bool cq_ring_needs_flush(struct io_uring* ring) noexcept {
     return IO_URING_READ_ONCE(*ring->sq.kflags) & (IORING_SQ_CQ_OVERFLOW | IORING_SQ_TASKRUN);
 }
 
@@ -1137,7 +1137,7 @@ IOURINGINLINE int internal__io_uring_peek_cqe(struct io_uring*      ring,
 }
 
 
-nodiscard IOURINGINLINE bool cq_ring_needs_enter(struct io_uring* ring) noexcept {
+uring_nodiscard IOURINGINLINE bool cq_ring_needs_enter(struct io_uring* ring) noexcept {
     return (ring->flags & IORING_SETUP_IOPOLL) || cq_ring_needs_flush(ring);
 }
 
@@ -1147,7 +1147,7 @@ nodiscard IOURINGINLINE bool cq_ring_needs_enter(struct io_uring* ring) noexcept
  * awakened. For the latter case, we set the thread wakeup flag.
  * If no SQEs are ready for submission, returns false.
  */
-nodiscard IOURINGINLINE bool
+uring_nodiscard IOURINGINLINE bool
 sq_ring_needs_enter(struct io_uring* ring, unsigned submit, unsigned* flags) noexcept {
     if (!submit)
         return false;
@@ -2703,14 +2703,14 @@ IOURINGINLINE int io_uring_sqring_wait(struct io_uring* ring) noexcept {
  * Returns true if there are overflow entries waiting to be flushed onto
  * the CQ ring
  */
-nodiscard IOURINGINLINE bool io_uring_cq_has_overflow(const struct io_uring* ring) noexcept {
+uring_nodiscard IOURINGINLINE bool io_uring_cq_has_overflow(const struct io_uring* ring) noexcept {
     return IO_URING_READ_ONCE(*ring->sq.kflags) & IORING_SQ_CQ_OVERFLOW;
 }
 
 /*
  * Returns true if the eventfd notification is currently enabled
  */
-nodiscard IOURINGINLINE bool io_uring_cq_eventfd_enabled(const struct io_uring* ring) noexcept {
+uring_nodiscard IOURINGINLINE bool io_uring_cq_eventfd_enabled(const struct io_uring* ring) noexcept {
     if (!ring->cq.kflags)
         return true;
 
