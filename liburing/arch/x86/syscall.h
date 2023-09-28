@@ -147,7 +147,7 @@
  */
 
 #        define __do_syscall0(NUM)                      \
-            {                                          \
+            {                                           \
                 intptr_t eax;                           \
                                                         \
                 __asm__ volatile("int	$0x80"            \
@@ -158,7 +158,7 @@
             }
 
 #        define __do_syscall1(NUM, ARG1)                  \
-            {                                            \
+            {                                             \
                 intptr_t eax;                             \
                                                           \
                 __asm__ volatile("int	$0x80"              \
@@ -170,7 +170,7 @@
             }
 
 #        define __do_syscall2(NUM, ARG1, ARG2)             \
-            {                                             \
+            {                                              \
                 intptr_t eax;                              \
                                                            \
                 __asm__ volatile("int	$0x80"               \
@@ -183,7 +183,7 @@
             }
 
 #        define __do_syscall3(NUM, ARG1, ARG2, ARG3)       \
-            {                                             \
+            {                                              \
                 intptr_t eax;                              \
                                                            \
                 __asm__ volatile("int	$0x80"               \
@@ -197,7 +197,7 @@
             }
 
 #        define __do_syscall4(NUM, ARG1, ARG2, ARG3, ARG4) \
-            {                                             \
+            {                                              \
                 intptr_t eax;                              \
                                                            \
                 __asm__ volatile("int	$0x80"               \
@@ -212,7 +212,7 @@
             }
 
 #        define __do_syscall5(NUM, ARG1, ARG2, ARG3, ARG4, ARG5) \
-            {                                                   \
+            {                                                    \
                 intptr_t eax;                                    \
                                                                  \
                 __asm__ volatile("int	$0x80"                     \
@@ -249,7 +249,7 @@
  *
  */
 #        define __do_syscall6(NUM, ARG1, ARG2, ARG3, ARG4, ARG5, ARG6)    \
-            {                                                            \
+            {                                                             \
                 intptr_t eax  = (intptr_t) (NUM);                         \
                 intptr_t arg6 = (intptr_t) (ARG6); /* Always in memory */ \
                 __asm__ volatile("pushl	%[_arg6]\n\t"                     \
