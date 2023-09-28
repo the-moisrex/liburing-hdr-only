@@ -247,9 +247,11 @@ IOURINGINLINE int io_uring_register_buffers_update_tag(struct io_uring*    ring,
                                                        unsigned            nr) noexcept {
     struct io_uring_rsrc_update2 up = {
       .offset = off,
-      .data   = (unsigned long) iovecs,
-      .tags   = (unsigned long) tags,
+      .resv   = 0,
+      .data   = uring_reinterpret_cast(unsigned long, iovecs),
+      .tags   = uring_reinterpret_cast(unsigned long, tags),
       .nr     = nr,
+      .resv2  = 0,
     };
 
     return do_register(ring, IORING_REGISTER_BUFFERS_UPDATE, &up, sizeof(up));
@@ -260,16 +262,24 @@ IOURINGINLINE int io_uring_register_buffers_tags(struct io_uring*    ring,
                                                  const __u64*        tags,
                                                  unsigned            nr) noexcept {
     struct io_uring_rsrc_register reg = {
-      .nr   = nr,
-      .data = uring_reinterpret_cast(unsigned long, iovecs),
-      .tags = uring_reinterpret_cast(unsigned long, tags),
+      .nr    = nr,
+      .flags = 0,
+      .resv2 = 0,
+      .data  = uring_reinterpret_cast(unsigned long, iovecs),
+      .tags  = uring_reinterpret_cast(unsigned long, tags),
     };
 
     return do_register(ring, IORING_REGISTER_BUFFERS2, &reg, sizeof(reg));
 }
 
 IOURINGINLINE int io_uring_register_buffers_sparse(struct io_uring* ring, unsigned nr) noexcept {
-    struct io_uring_rsrc_register reg = {.nr = nr, .flags = IORING_RSRC_REGISTER_SPARSE};
+    struct io_uring_rsrc_register reg = {
+      .nr    = nr,
+      .flags = IORING_RSRC_REGISTER_SPARSE,
+      .resv2 = 0,
+      .data  = 0,
+      .tags  = 0,
+    };
 
     return do_register(ring, IORING_REGISTER_BUFFERS2, &reg, sizeof(reg));
 }
@@ -290,9 +300,11 @@ IOURINGINLINE int io_uring_register_files_update_tag(struct io_uring* ring,
                                                      unsigned         nr_files) noexcept {
     struct io_uring_rsrc_update2 up = {
       .offset = off,
+      .resv   = 0,
       .data   = uring_reinterpret_cast(unsigned long, files),
       .tags   = uring_reinterpret_cast(unsigned long, tags),
       .nr     = nr_files,
+      .resv2  = 0,
     };
 
     return do_register(ring, IORING_REGISTER_FILES_UPDATE2, &up, sizeof(up));
@@ -311,6 +323,7 @@ IOURINGINLINE int io_uring_register_files_update(struct io_uring* ring,
                                                  unsigned         nr_files) noexcept {
     struct io_uring_files_update up = {
       .offset = off,
+      .resv   = 0,
       .fds    = uring_reinterpret_cast(unsigned long, files),
     };
 
@@ -337,6 +350,9 @@ IOURINGINLINE int io_uring_register_files_sparse(struct io_uring* ring, unsigned
     struct io_uring_rsrc_register reg = {
       .nr    = nr,
       .flags = IORING_RSRC_REGISTER_SPARSE,
+      .resv2 = 0,
+      .data  = 0,
+      .tags  = 0,
     };
     int ret, did_increase = 0;
 
@@ -360,9 +376,11 @@ IOURINGINLINE int io_uring_register_files_tags(struct io_uring* ring,
                                                const __u64*     tags,
                                                unsigned         nr) noexcept {
     struct io_uring_rsrc_register reg = {
-      .nr   = nr,
-      .data = (unsigned long) files,
-      .tags = (unsigned long) tags,
+      .nr    = nr,
+      .flags = 0,
+      .resv2 = 0,
+      .data  = uring_reinterpret_cast(unsigned long, files),
+      .tags  = uring_reinterpret_cast(unsigned long, tags),
     };
     int ret, did_increase = 0;
 
@@ -458,6 +476,7 @@ IOURINGINLINE int io_uring_register_iowq_max_workers(struct io_uring* ring, unsi
 IOURINGINLINE int io_uring_register_ring_fd(struct io_uring* ring) noexcept {
     struct io_uring_rsrc_update up = {
       .offset = -1U,
+      .resv   = 0,
       .data   = uring_static_cast(__u64, ring->ring_fd),
     };
     int ret;
@@ -480,6 +499,8 @@ IOURINGINLINE int io_uring_register_ring_fd(struct io_uring* ring) noexcept {
 IOURINGINLINE int io_uring_unregister_ring_fd(struct io_uring* ring) noexcept {
     struct io_uring_rsrc_update up = {
       .offset = uring_static_cast(__u32, ring->enter_ring_fd),
+      .resv   = 0,
+      .data   = 0,
     };
     int ret;
 
@@ -514,7 +535,13 @@ IOURINGINLINE int io_uring_register_buf_ring(struct io_uring*                 ri
 }
 
 IOURINGINLINE int io_uring_unregister_buf_ring(struct io_uring* ring, int bgid) noexcept {
-    struct io_uring_buf_reg reg = {.bgid = uring_static_cast(__u16, bgid)};
+    struct io_uring_buf_reg reg = {
+      .ring_addr    = 0,
+      .ring_entries = 0,
+      .bgid         = uring_static_cast(__u16, bgid),
+      .flags        = 0,
+      .resv         = {},
+    };
 
     return do_register(ring, IORING_UNREGISTER_PBUF_RING, &reg, 1);
 }
@@ -526,7 +553,7 @@ IOURINGINLINE int io_uring_register_sync_cancel(struct io_uring*                
 
 IOURINGINLINE int
 io_uring_register_file_alloc_range(struct io_uring* ring, unsigned off, unsigned len) noexcept {
-    struct io_uring_file_index_range range = {.off = off, .len = len};
+    struct io_uring_file_index_range range = {.off = off, .len = len, .resv = 0};
 
     return do_register(ring, IORING_REGISTER_FILE_ALLOC_RANGE, &range, 0);
 }
@@ -1376,6 +1403,7 @@ IOURINGINLINE int internal__io_uring_get_cqe(struct io_uring*      ring,
       .wait_nr   = wait_nr,
       .get_flags = 0,
       .sz        = _NSIG / 8,
+      .has_ts    = 0,
       .arg       = sigmask,
     };
 
@@ -1529,9 +1557,10 @@ IOURINGINLINE int io_uring_submit_and_wait_timeout(struct io_uring*          rin
 
     if (ts) {
         if (ring->features & IORING_FEAT_EXT_ARG) {
-            struct io_uring_getevents_arg arg  = {.sigmask    = (unsigned long) sigmask,
+            struct io_uring_getevents_arg arg  = {.sigmask    = uring_reinterpret_cast(unsigned long, sigmask),
                                                   .sigmask_sz = _NSIG / 8,
-                                                  .ts         = (unsigned long) ts};
+                                                  .pad        = 0,
+                                                  .ts         = uring_reinterpret_cast(unsigned long, ts)};
             struct get_data               data = {.submit    = internal__io_uring_flush_sq(ring),
                                                   .wait_nr   = wait_nr,
                                                   .get_flags = IORING_ENTER_EXT_ARG,
@@ -2225,7 +2254,7 @@ IOURINGINLINE void io_uring_prep_sendto(struct io_uring_sqe*   sqe,
                                         const struct sockaddr* addr,
                                         socklen_t              addrlen) noexcept {
     io_uring_prep_send(sqe, sockfd, buf, len, flags);
-    io_uring_prep_send_set_addr(sqe, addr, addrlen);
+    io_uring_prep_send_set_addr(sqe, addr, uring_static_cast(__u16, addrlen));
 }
 
 IOURINGINLINE void io_uring_prep_send_zc(struct io_uring_sqe* sqe,
@@ -2236,7 +2265,7 @@ IOURINGINLINE void io_uring_prep_send_zc(struct io_uring_sqe* sqe,
                                          unsigned             zc_flags) noexcept {
     io_uring_prep_rw(IORING_OP_SEND_ZC, sqe, sockfd, buf, uring_static_cast(__u32, len), 0);
     sqe->msg_flags = uring_static_cast(__u32, flags);
-    sqe->ioprio    = zc_flags;
+    sqe->ioprio    = uring_static_cast(__u16, zc_flags);
 }
 
 IOURINGINLINE void io_uring_prep_send_zc_fixed(struct io_uring_sqe* sqe,
@@ -2248,7 +2277,7 @@ IOURINGINLINE void io_uring_prep_send_zc_fixed(struct io_uring_sqe* sqe,
                                                unsigned             buf_index) noexcept {
     io_uring_prep_send_zc(sqe, sockfd, buf, len, flags, zc_flags);
     sqe->ioprio |= IORING_RECVSEND_FIXED_BUF;
-    sqe->buf_index = buf_index;
+    sqe->buf_index = uring_static_cast(__u16, buf_index);
 }
 
 IOURINGINLINE void io_uring_prep_sendmsg_zc(struct io_uring_sqe* sqe,
@@ -2812,7 +2841,7 @@ IOURINGINLINE void internal__io_uring_buf_ring_cq_advance(struct io_uring*      
                                                           struct io_uring_buf_ring* br,
                                                           int                       cq_count,
                                                           int                       buf_count) noexcept {
-    br->tail += buf_count;
+    br->tail += uring_static_cast(__u16, buf_count);
     io_uring_cq_advance(ring, uring_static_cast(unsigned, cq_count));
 }
 
