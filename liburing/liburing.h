@@ -269,10 +269,7 @@ IOURINGINLINE int io_uring_register_buffers_tags(struct io_uring*    ring,
 }
 
 IOURINGINLINE int io_uring_register_buffers_sparse(struct io_uring* ring, unsigned nr) noexcept {
-    struct io_uring_rsrc_register reg = {
-      .flags = IORING_RSRC_REGISTER_SPARSE,
-      .nr    = nr,
-    };
+    struct io_uring_rsrc_register reg = {.nr = nr, .flags = IORING_RSRC_REGISTER_SPARSE};
 
     return do_register(ring, IORING_REGISTER_BUFFERS2, &reg, sizeof(reg));
 }
@@ -447,7 +444,7 @@ io_uring_register_iowq_aff(struct io_uring* ring, size_t cpusz, const cpu_set_t*
     if (cpusz >= (1U << 31))
         return -EINVAL;
 
-    return do_register(ring, IORING_REGISTER_IOWQ_AFF, mask, (int) cpusz);
+    return do_register(ring, IORING_REGISTER_IOWQ_AFF, mask, uring_static_cast(int, cpusz));
 }
 
 IOURINGINLINE int io_uring_unregister_iowq_aff(struct io_uring* ring) noexcept {
@@ -460,8 +457,8 @@ IOURINGINLINE int io_uring_register_iowq_max_workers(struct io_uring* ring, unsi
 
 IOURINGINLINE int io_uring_register_ring_fd(struct io_uring* ring) noexcept {
     struct io_uring_rsrc_update up = {
-      .data   = ring->ring_fd,
       .offset = -1U,
+      .data   = uring_static_cast(__u64, ring->ring_fd),
     };
     int ret;
 
@@ -482,7 +479,7 @@ IOURINGINLINE int io_uring_register_ring_fd(struct io_uring* ring) noexcept {
 
 IOURINGINLINE int io_uring_unregister_ring_fd(struct io_uring* ring) noexcept {
     struct io_uring_rsrc_update up = {
-      .offset = ring->enter_ring_fd,
+      .offset = uring_static_cast(__u32, ring->enter_ring_fd),
     };
     int ret;
 
@@ -512,12 +509,12 @@ IOURINGINLINE int io_uring_close_ring_fd(struct io_uring* ring) noexcept {
 
 IOURINGINLINE int io_uring_register_buf_ring(struct io_uring*                 ring,
                                              struct io_uring_buf_reg*         reg,
-                                             unsigned int uring__maybe_unused flags) noexcept {
+                                             uring__maybe_unused unsigned int flags) noexcept {
     return do_register(ring, IORING_REGISTER_PBUF_RING, reg, 1);
 }
 
 IOURINGINLINE int io_uring_unregister_buf_ring(struct io_uring* ring, int bgid) noexcept {
-    struct io_uring_buf_reg reg = {.bgid = bgid};
+    struct io_uring_buf_reg reg = {.bgid = uring_static_cast(__u16, bgid)};
 
     return do_register(ring, IORING_UNREGISTER_PBUF_RING, &reg, 1);
 }
@@ -542,7 +539,7 @@ IOURINGINLINE struct io_uring_probe* io_uring_get_probe_ring(struct io_uring* ri
     struct io_uring_probe* probe;
 
     size_t len = sizeof(*probe) + 256 * sizeof(struct io_uring_probe_op);
-    probe      = malloc(len);
+    probe      = uring_reinterpret_cast(struct io_uring_probe*, malloc(len));
     if (!probe)
         return nullptr;
     memset(probe, 0, len);
@@ -577,7 +574,7 @@ IOURINGINLINE int io_uring_opcode_supported(const struct io_uring_probe* p, int 
 IOURINGINLINE int internal__fls(int x) noexcept {
     if (!x)
         return 0;
-    return uring_static_cast(int, 8) * sizeof(x) - __builtin_clz(x);
+    return uring_static_cast(int, uring_static_cast(int, 8) * sizeof(x) - __builtin_clz(x));
 }
 
 IOURINGINLINE unsigned roundup_pow2(unsigned depth) noexcept {
@@ -631,7 +628,7 @@ IOURINGINLINE int io_uring_alloc_huge(unsigned                entries,
                                       struct io_uring_cq*     cq,
                                       void*                   buf,
                                       size_t                  buf_size) noexcept {
-    unsigned long page_size = get_page_size();
+    unsigned long page_size = uring_static_cast(unsigned long, get_page_size());
     unsigned      sq_entries, cq_entries;
     size_t        ring_mem, sqes_mem;
     unsigned long mem_used = 0;
@@ -683,7 +680,7 @@ IOURINGINLINE int io_uring_alloc_huge(unsigned                entries,
             return PTR_ERR(ptr);
     }
 
-    sq->sqes = ptr;
+    sq->sqes = uring_reinterpret_cast(struct io_uring_sqe*, ptr);
     if (mem_used <= buf_size) {
         sq->ring_ptr = (void*) sq->sqes + sqes_mem;
         /* clear ring sizes, we have just one mmap() to undo */

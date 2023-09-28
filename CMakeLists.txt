@@ -18,6 +18,15 @@ if (LIBURING_CXX)
     set_target_properties(${PROJECT_NAME} PROPERTIES
             LINKER_LANGUAGE CXX
     )
+    target_compile_features(${name} PUBLIC
+            cxx_std_20
+            cxx_auto_type
+            cxx_constexpr
+            cxx_nullptr
+            cxx_attributes
+            cxx_noexcept
+            cxx_uniform_initialization
+    )
 else ()
     set_target_properties(${PROJECT_NAME} PROPERTIES
             LINKER_LANGUAGE C
