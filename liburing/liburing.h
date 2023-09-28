@@ -90,7 +90,7 @@ uring_nodiscard IOURINGINLINE bool IS_ERR(const void* ptr) noexcept {
 #endif
 
 
-static inline int io_uring_enter(unsigned int fd,
+IOURINGINLINE int io_uring_enter(unsigned int fd,
                                  unsigned int to_submit,
                                  unsigned int min_complete,
                                  unsigned int flags,
@@ -98,7 +98,7 @@ static inline int io_uring_enter(unsigned int fd,
     return __sys_io_uring_enter(fd, to_submit, min_complete, flags, sig);
 }
 
-static inline int io_uring_enter2(unsigned int fd,
+IOURINGINLINE int io_uring_enter2(unsigned int fd,
                                   unsigned int to_submit,
                                   unsigned int min_complete,
                                   unsigned int flags,
@@ -107,11 +107,11 @@ static inline int io_uring_enter2(unsigned int fd,
     return __sys_io_uring_enter2(fd, to_submit, min_complete, flags, sig, sz);
 }
 
-static inline int io_uring_setup(unsigned int entries, struct io_uring_params* p) noexcept {
+IOURINGINLINE int io_uring_setup(unsigned int entries, struct io_uring_params* p) noexcept {
     return __sys_io_uring_setup(entries, p);
 }
 
-static inline int
+IOURINGINLINE int
 io_uring_register(unsigned int fd, unsigned int opcode, const void* arg, unsigned int nr_args) noexcept {
     return __sys_io_uring_register(fd, opcode, arg, nr_args);
 }
@@ -779,10 +779,9 @@ IOURINGINLINE void io_uring_setup_ring_pointers(struct io_uring_params* p,
 
 IOURINGINLINE int
 io_uring_mmap(int fd, struct io_uring_params* p, struct io_uring_sq* sq, struct io_uring_cq* cq) noexcept {
-    size_t size;
-    int    ret;
+    int ret;
 
-    size = sizeof(struct io_uring_cqe);
+    size_t size = sizeof(struct io_uring_cqe);
     if (p->flags & IORING_SETUP_CQE32)
         size += sizeof(struct io_uring_cqe);
 
@@ -854,7 +853,7 @@ IOURINGINLINE int internal__io_uring_queue_init_params(unsigned                e
                                                        struct io_uring_params* p,
                                                        void*                   buf,
                                                        size_t                  buf_size) noexcept {
-    int       fd, ret = 0;
+    int       ret = 0;
     unsigned* sq_array;
     unsigned  sq_entries, index;
 
@@ -875,7 +874,7 @@ IOURINGINLINE int internal__io_uring_queue_init_params(unsigned                e
             ring->int_flags |= INT_FLAG_APP_MEM;
     }
 
-    fd = __sys_io_uring_setup(entries, p);
+    int const fd = __sys_io_uring_setup(entries, p);
     if (fd < 0) {
         if ((p->flags & IORING_SETUP_NO_MMAP) && !(ring->int_flags & INT_FLAG_APP_MEM)) {
             __sys_munmap(ring->sq.sqes, 1);
@@ -1578,27 +1577,6 @@ IOURINGINLINE int io_uring_submit_and_wait_timeout(struct io_uring*          rin
 
     return internal__io_uring_get_cqe(ring, cqe_ptr, to_submit, wait_nr, sigmask);
 }
-
-
-/*
- * io_uring syscalls.
- */
-int io_uring_enter(unsigned int fd,
-                   unsigned int to_submit,
-                   unsigned int min_complete,
-                   unsigned int flags,
-                   sigset_t*    sig);
-
-int io_uring_enter2(unsigned int fd,
-                    unsigned int to_submit,
-                    unsigned int min_complete,
-                    unsigned int flags,
-                    sigset_t*    sig,
-                    size_t       sz);
-
-int io_uring_setup(unsigned int entries, struct io_uring_params* p);
-
-int io_uring_register(unsigned int fd, unsigned int opcode, const void* arg, unsigned int nr_args);
 
 
 IOURINGINLINE void io_uring_buf_ring_init(struct io_uring_buf_ring* br) noexcept {
