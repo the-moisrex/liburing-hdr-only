@@ -54,7 +54,6 @@ struct open_how {
 #    define uring_reinterpret_cast(To, What) reinterpret_cast<To>(What)
 #else
 #    define noexcept
-#    define constexpr
 #    define nullptr NULL
 #    define nodiscard
 #    define uring_static_cast(To, What)      (To)(What)
@@ -63,5 +62,23 @@ struct open_how {
 
 #define UNUSED(x) (void) (x)
 // todo: check for statx
+
+
+
+#ifdef __cplusplus
+#    include <iterator>
+template <typename T>
+[[nodiscard]] constexpr auto next_ptr(T* ptr, std::size_t n = 1) noexcept {
+    return std::next(ptr, n);
+}
+[[nodiscard]] auto next_ptr(void const* ptr, std::size_t n = 1) noexcept {
+    return std::next(reinterpret_cast<std::intptr_t const*>(ptr), n);
+}
+[[nodiscard]] auto next_ptr(void* ptr, std::size_t n = 1) noexcept {
+    return std::next(reinterpret_cast<std::intptr_t*>(ptr), n);
+}
+#else
+#    define next_ptr(ptr, N) (ptr + N)
+#endif
 
 #endif
