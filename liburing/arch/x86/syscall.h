@@ -25,109 +25,95 @@
  *   %r11 == %rflags and %rcx == %rip.
  */
 
-#    define __do_syscall0(NUM)                          \
-        ({                                              \
-            intptr_t rax;                               \
-                                                        \
-            __asm__ volatile("syscall"                  \
-                             : "=a"(rax) /* %rax */     \
-                             : "a"(NUM)  /* %rax */     \
-                             : "rcx", "r11", "memory"); \
-            rax;                                        \
-        })
+#    define __do_syscall0(NUM)                      \
+        intptr_t rax;                               \
+                                                    \
+        __asm__ volatile("syscall"                  \
+                         : "=a"(rax) /* %rax */     \
+                         : "a"(NUM)  /* %rax */     \
+                         : "rcx", "r11", "memory"); \
+        const intptr_t ret = rax
 
-#    define __do_syscall1(NUM, ARG1)                    \
-        ({                                              \
-            intptr_t rax;                               \
-                                                        \
-            __asm__ volatile("syscall"                  \
-                             : "=a"(rax)   /* %rax */   \
-                             : "a"((NUM)), /* %rax */   \
-                               "D"((ARG1)) /* %rdi */   \
-                             : "rcx", "r11", "memory"); \
-            rax;                                        \
-        })
+#    define __do_syscall1(NUM, ARG1)                \
+        intptr_t rax;                               \
+                                                    \
+        __asm__ volatile("syscall"                  \
+                         : "=a"(rax)   /* %rax */   \
+                         : "a"((NUM)), /* %rax */   \
+                           "D"((ARG1)) /* %rdi */   \
+                         : "rcx", "r11", "memory"); \
+        const intptr_t ret = rax
 
-#    define __do_syscall2(NUM, ARG1, ARG2)              \
-        ({                                              \
-            intptr_t rax;                               \
-                                                        \
-            __asm__ volatile("syscall"                  \
-                             : "=a"(rax)    /* %rax */  \
-                             : "a"((NUM)),  /* %rax */  \
-                               "D"((ARG1)), /* %rdi */  \
-                               "S"((ARG2))  /* %rsi */  \
-                             : "rcx", "r11", "memory"); \
-            rax;                                        \
-        })
+#    define __do_syscall2(NUM, ARG1, ARG2)          \
+        intptr_t rax;                               \
+                                                    \
+        __asm__ volatile("syscall"                  \
+                         : "=a"(rax)    /* %rax */  \
+                         : "a"((NUM)),  /* %rax */  \
+                           "D"((ARG1)), /* %rdi */  \
+                           "S"((ARG2))  /* %rsi */  \
+                         : "rcx", "r11", "memory"); \
+        const intptr_t ret = rax
 
-#    define __do_syscall3(NUM, ARG1, ARG2, ARG3)        \
-        ({                                              \
-            intptr_t rax;                               \
-                                                        \
-            __asm__ volatile("syscall"                  \
-                             : "=a"(rax)    /* %rax */  \
-                             : "a"((NUM)),  /* %rax */  \
-                               "D"((ARG1)), /* %rdi */  \
-                               "S"((ARG2)), /* %rsi */  \
-                               "d"((ARG3))  /* %rdx */  \
-                             : "rcx", "r11", "memory"); \
-            rax;                                        \
-        })
+#    define __do_syscall3(NUM, ARG1, ARG2, ARG3)    \
+        intptr_t rax;                               \
+                                                    \
+        __asm__ volatile("syscall"                  \
+                         : "=a"(rax)    /* %rax */  \
+                         : "a"((NUM)),  /* %rax */  \
+                           "D"((ARG1)), /* %rdi */  \
+                           "S"((ARG2)), /* %rsi */  \
+                           "d"((ARG3))  /* %rdx */  \
+                         : "rcx", "r11", "memory"); \
+        const intptr_t ret = rax
 
-#    define __do_syscall4(NUM, ARG1, ARG2, ARG3, ARG4)               \
-        ({                                                           \
-            intptr_t                  rax;                           \
-            register __typeof__(ARG4) __r10 __asm__("r10") = (ARG4); \
-                                                                     \
-            __asm__ volatile("syscall"                               \
-                             : "=a"(rax)    /* %rax */               \
-                             : "a"((NUM)),  /* %rax */               \
-                               "D"((ARG1)), /* %rdi */               \
-                               "S"((ARG2)), /* %rsi */               \
-                               "d"((ARG3)), /* %rdx */               \
-                               "r"(__r10)   /* %r10 */               \
-                             : "rcx", "r11", "memory");              \
-            rax;                                                     \
-        })
+#    define __do_syscall4(NUM, ARG1, ARG2, ARG3, ARG4)           \
+        intptr_t                  rax;                           \
+        register __typeof__(ARG4) __r10 __asm__("r10") = (ARG4); \
+                                                                 \
+        __asm__ volatile("syscall"                               \
+                         : "=a"(rax)    /* %rax */               \
+                         : "a"((NUM)),  /* %rax */               \
+                           "D"((ARG1)), /* %rdi */               \
+                           "S"((ARG2)), /* %rsi */               \
+                           "d"((ARG3)), /* %rdx */               \
+                           "r"(__r10)   /* %r10 */               \
+                         : "rcx", "r11", "memory");              \
+        const intptr_t ret = rax
 
-#    define __do_syscall5(NUM, ARG1, ARG2, ARG3, ARG4, ARG5)         \
-        ({                                                           \
-            intptr_t                  rax;                           \
-            register __typeof__(ARG4) __r10 __asm__("r10") = (ARG4); \
-            register __typeof__(ARG5) __r8 __asm__("r8")   = (ARG5); \
-                                                                     \
-            __asm__ volatile("syscall"                               \
-                             : "=a"(rax)    /* %rax */               \
-                             : "a"((NUM)),  /* %rax */               \
-                               "D"((ARG1)), /* %rdi */               \
-                               "S"((ARG2)), /* %rsi */               \
-                               "d"((ARG3)), /* %rdx */               \
-                               "r"(__r10),  /* %r10 */               \
-                               "r"(__r8)    /* %r8 */                \
-                             : "rcx", "r11", "memory");              \
-            rax;                                                     \
-        })
+#    define __do_syscall5(NUM, ARG1, ARG2, ARG3, ARG4, ARG5)     \
+        intptr_t                  rax;                           \
+        register __typeof__(ARG4) __r10 __asm__("r10") = (ARG4); \
+        register __typeof__(ARG5) __r8 __asm__("r8")   = (ARG5); \
+                                                                 \
+        __asm__ volatile("syscall"                               \
+                         : "=a"(rax)    /* %rax */               \
+                         : "a"((NUM)),  /* %rax */               \
+                           "D"((ARG1)), /* %rdi */               \
+                           "S"((ARG2)), /* %rsi */               \
+                           "d"((ARG3)), /* %rdx */               \
+                           "r"(__r10),  /* %r10 */               \
+                           "r"(__r8)    /* %r8 */                \
+                         : "rcx", "r11", "memory");              \
+        const intptr_t ret = rax
 
-#    define __do_syscall6(NUM, ARG1, ARG2, ARG3, ARG4, ARG5, ARG6)   \
-        ({                                                           \
-            intptr_t                  rax;                           \
-            register __typeof__(ARG4) __r10 __asm__("r10") = (ARG4); \
-            register __typeof__(ARG5) __r8 __asm__("r8")   = (ARG5); \
-            register __typeof__(ARG6) __r9 __asm__("r9")   = (ARG6); \
-                                                                     \
-            __asm__ volatile("syscall"                               \
-                             : "=a"(rax)    /* %rax */               \
-                             : "a"((NUM)),  /* %rax */               \
-                               "D"((ARG1)), /* %rdi */               \
-                               "S"((ARG2)), /* %rsi */               \
-                               "d"((ARG3)), /* %rdx */               \
-                               "r"(__r10),  /* %r10 */               \
-                               "r"(__r8),   /* %r8 */                \
-                               "r"(__r9)    /* %r9 */                \
-                             : "rcx", "r11", "memory");              \
-            rax;                                                     \
-        })
+#    define __do_syscall6(NUM, ARG1, ARG2, ARG3, ARG4, ARG5, ARG6) \
+        intptr_t                  rax;                             \
+        register __typeof__(ARG4) __r10 __asm__("r10") = (ARG4);   \
+        register __typeof__(ARG5) __r8 __asm__("r8")   = (ARG5);   \
+        register __typeof__(ARG6) __r9 __asm__("r9")   = (ARG6);   \
+                                                                   \
+        __asm__ volatile("syscall"                                 \
+                         : "=a"(rax)    /* %rax */                 \
+                         : "a"((NUM)),  /* %rax */                 \
+                           "D"((ARG1)), /* %rdi */                 \
+                           "S"((ARG2)), /* %rsi */                 \
+                           "d"((ARG3)), /* %rdx */                 \
+                           "r"(__r10),  /* %r10 */                 \
+                           "r"(__r8),   /* %r8 */                  \
+                           "r"(__r9)    /* %r9 */                  \
+                         : "rcx", "r11", "memory");                \
+        const intptr_t ret = rax
 
 #    include "../syscall-defs.h"
 
@@ -146,86 +132,73 @@
  *   - %ebp is the 6th argument.
  */
 
-#        define __do_syscall0(NUM)                      \
-            ({                                           \
-                intptr_t eax;                           \
-                                                        \
-                __asm__ volatile("int	$0x80"            \
-                                 : "=a"(eax) /* %eax */ \
-                                 : "a"(NUM)  /* %eax */ \
-                                 : "memory");           \
-                eax;                                    \
-            })
+#        define __do_syscall0(NUM)                  \
+            intptr_t eax;                           \
+                                                    \
+            __asm__ volatile("int	$0x80"            \
+                             : "=a"(eax) /* %eax */ \
+                             : "a"(NUM)  /* %eax */ \
+                             : "memory");
 
-#        define __do_syscall1(NUM, ARG1)                  \
-            ({                                             \
-                intptr_t eax;                             \
-                                                          \
-                __asm__ volatile("int	$0x80"              \
-                                 : "=a"(eax)   /* %eax */ \
-                                 : "a"(NUM),   /* %eax */ \
-                                   "b"((ARG1)) /* %ebx */ \
-                                 : "memory");             \
-                eax;                                      \
-            })
+#        define __do_syscall1(NUM, ARG1)              \
+            intptr_t eax;                             \
+                                                      \
+            __asm__ volatile("int	$0x80"              \
+                             : "=a"(eax)   /* %eax */ \
+                             : "a"(NUM),   /* %eax */ \
+                               "b"((ARG1)) /* %ebx */ \
+                             : "memory");             \
+            const intptr_t ret = eax
 
-#        define __do_syscall2(NUM, ARG1, ARG2)             \
-            ({                                              \
-                intptr_t eax;                              \
-                                                           \
-                __asm__ volatile("int	$0x80"               \
-                                 : "=a"(eax)    /* %eax */ \
-                                 : "a"(NUM),    /* %eax */ \
-                                   "b"((ARG1)), /* %ebx */ \
-                                   "c"((ARG2))  /* %ecx */ \
-                                 : "memory");              \
-                eax;                                       \
-            })
+#        define __do_syscall2(NUM, ARG1, ARG2)         \
+            intptr_t eax;                              \
+                                                       \
+            __asm__ volatile("int	$0x80"               \
+                             : "=a"(eax)    /* %eax */ \
+                             : "a"(NUM),    /* %eax */ \
+                               "b"((ARG1)), /* %ebx */ \
+                               "c"((ARG2))  /* %ecx */ \
+                             : "memory");              \
+            const intptr_t ret = eax
 
-#        define __do_syscall3(NUM, ARG1, ARG2, ARG3)       \
-            ({                                              \
-                intptr_t eax;                              \
-                                                           \
-                __asm__ volatile("int	$0x80"               \
-                                 : "=a"(eax)    /* %eax */ \
-                                 : "a"(NUM),    /* %eax */ \
-                                   "b"((ARG1)), /* %ebx */ \
-                                   "c"((ARG2)), /* %ecx */ \
-                                   "d"((ARG3))  /* %edx */ \
-                                 : "memory");              \
-                eax;                                       \
-            })
+#        define __do_syscall3(NUM, ARG1, ARG2, ARG3)   \
+            intptr_t eax;                              \
+                                                       \
+            __asm__ volatile("int	$0x80"               \
+                             : "=a"(eax)    /* %eax */ \
+                             : "a"(NUM),    /* %eax */ \
+                               "b"((ARG1)), /* %ebx */ \
+                               "c"((ARG2)), /* %ecx */ \
+                               "d"((ARG3))  /* %edx */ \
+                             : "memory");              \
+            const intptr_t ret = eax
 
 #        define __do_syscall4(NUM, ARG1, ARG2, ARG3, ARG4) \
-            ({                                              \
-                intptr_t eax;                              \
+            intptr_t eax;                                  \
                                                            \
-                __asm__ volatile("int	$0x80"               \
-                                 : "=a"(eax)    /* %eax */ \
-                                 : "a"(NUM),    /* %eax */ \
-                                   "b"((ARG1)), /* %ebx */ \
-                                   "c"((ARG2)), /* %ecx */ \
-                                   "d"((ARG3)), /* %edx */ \
-                                   "S"((ARG4))  /* %esi */ \
-                                 : "memory");              \
-                eax;                                       \
-            })
+            __asm__ volatile("int	$0x80"                   \
+                             : "=a"(eax)    /* %eax */     \
+                             : "a"(NUM),    /* %eax */     \
+                               "b"((ARG1)), /* %ebx */     \
+                               "c"((ARG2)), /* %ecx */     \
+                               "d"((ARG3)), /* %edx */     \
+                               "S"((ARG4))  /* %esi */     \
+                             : "memory");                  \
+            const intptr_t ret = eax
 
 #        define __do_syscall5(NUM, ARG1, ARG2, ARG3, ARG4, ARG5) \
-            ({                                                    \
-                intptr_t eax;                                    \
+            intptr_t eax;                                        \
                                                                  \
-                __asm__ volatile("int	$0x80"                     \
-                                 : "=a"(eax)    /* %eax */       \
-                                 : "a"(NUM),    /* %eax */       \
-                                   "b"((ARG1)), /* %ebx */       \
-                                   "c"((ARG2)), /* %ecx */       \
-                                   "d"((ARG3)), /* %edx */       \
-                                   "S"((ARG4)), /* %esi */       \
-                                   "D"((ARG5))  /* %edi */       \
-                                 : "memory");                    \
-                eax;                                             \
-            })
+            __asm__ volatile("int	$0x80"                         \
+                             : "=a"(eax)    /* %eax */           \
+                             : "a"(NUM),    /* %eax */           \
+                               "b"((ARG1)), /* %ebx */           \
+                               "c"((ARG2)), /* %ecx */           \
+                               "d"((ARG3)), /* %edx */           \
+                               "S"((ARG4)), /* %esi */           \
+                               "D"((ARG5))  /* %edi */           \
+                             : "memory");                        \
+            const intptr_t ret = eax
 
 
 /*
@@ -248,26 +221,24 @@
  * BugLink: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=105032
  *
  */
-#        define __do_syscall6(NUM, ARG1, ARG2, ARG3, ARG4, ARG5, ARG6)    \
-            ({                                                             \
-                intptr_t eax  = (intptr_t) (NUM);                         \
-                intptr_t arg6 = (intptr_t) (ARG6); /* Always in memory */ \
-                __asm__ volatile("pushl	%[_arg6]\n\t"                     \
-                                 "pushl	%%ebp\n\t"                        \
-                                 "movl	4(%%esp),%%ebp\n\t"                \
-                                 "int	$0x80\n\t"                          \
-                                 "popl	%%ebp\n\t"                         \
-                                 "addl	$4,%%esp"                          \
-                                 : "+a"(eax)         /* %eax */           \
-                                 : "b"(ARG1),        /* %ebx */           \
-                                   "c"(ARG2),        /* %ecx */           \
-                                   "d"(ARG3),        /* %edx */           \
-                                   "S"(ARG4),        /* %esi */           \
-                                   "D"(ARG5),        /* %edi */           \
-                                   [_arg6] "m"(arg6) /* memory */         \
-                                 : "memory", "cc");                       \
-                eax;                                                      \
-            })
+#        define __do_syscall6(NUM, ARG1, ARG2, ARG3, ARG4, ARG5, ARG6) \
+            intptr_t eax  = (intptr_t) (NUM);                          \
+            intptr_t arg6 = (intptr_t) (ARG6); /* Always in memory */  \
+            __asm__ volatile("pushl	%[_arg6]\n\t"                      \
+                             "pushl	%%ebp\n\t"                         \
+                             "movl	4(%%esp),%%ebp\n\t"                 \
+                             "int	$0x80\n\t"                           \
+                             "popl	%%ebp\n\t"                          \
+                             "addl	$4,%%esp"                           \
+                             : "+a"(eax)         /* %eax */            \
+                             : "b"(ARG1),        /* %ebx */            \
+                               "c"(ARG2),        /* %ecx */            \
+                               "d"(ARG3),        /* %edx */            \
+                               "S"(ARG4),        /* %esi */            \
+                               "D"(ARG5),        /* %edi */            \
+                               [_arg6] "m"(arg6) /* memory */          \
+                             : "memory", "cc");                        \
+            const intptr_t ret = eax
 
 #        include "../syscall-defs.h"
 
