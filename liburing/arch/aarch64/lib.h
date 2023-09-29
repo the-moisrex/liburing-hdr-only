@@ -13,14 +13,14 @@ static inline long __get_page_size(void) {
     long      ret = 4096;
     int       fd;
 
-    fd = __sys_open("/proc/self/auxv", O_RDONLY, 0);
+    fd = internal__sys_open("/proc/self/auxv", O_RDONLY, 0);
     if (fd < 0)
         return ret;
 
     while (1) {
         ssize_t x;
 
-        x = __sys_read(fd, buf, sizeof(buf));
+        x = internal__sys_read(fd, buf, sizeof(buf));
         if (x < (long) sizeof(buf))
             break;
 
@@ -30,7 +30,7 @@ static inline long __get_page_size(void) {
         }
     }
 
-    __sys_close(fd);
+    internal__sys_close(fd);
     return ret;
 }
 

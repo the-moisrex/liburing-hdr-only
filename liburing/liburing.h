@@ -95,7 +95,7 @@ IOURINGINLINE int io_uring_enter(unsigned int fd,
                                  unsigned int min_complete,
                                  unsigned int flags,
                                  sigset_t*    sig) noexcept {
-    return __sys_io_uring_enter(fd, to_submit, min_complete, flags, sig);
+    return internal__sys_io_uring_enter(fd, to_submit, min_complete, flags, sig);
 }
 
 IOURINGINLINE int io_uring_enter2(unsigned int fd,
@@ -104,16 +104,16 @@ IOURINGINLINE int io_uring_enter2(unsigned int fd,
                                   unsigned int flags,
                                   sigset_t*    sig,
                                   size_t       sz) noexcept {
-    return __sys_io_uring_enter2(fd, to_submit, min_complete, flags, sig, sz);
+    return internal__sys_io_uring_enter2(fd, to_submit, min_complete, flags, sig, sz);
 }
 
 IOURINGINLINE int io_uring_setup(unsigned int entries, struct io_uring_params* p) noexcept {
-    return __sys_io_uring_setup(entries, p);
+    return internal__sys_io_uring_setup(entries, p);
 }
 
 IOURINGINLINE int
 io_uring_register(unsigned int fd, unsigned int opcode, const void* arg, unsigned int nr_args) noexcept {
-    return __sys_io_uring_register(fd, opcode, arg, nr_args);
+    return internal__sys_io_uring_register(fd, opcode, arg, nr_args);
 }
 
 
@@ -237,7 +237,7 @@ do_register(struct io_uring* ring, unsigned int opcode, const void* arg, unsigne
         fd = ring->ring_fd;
     }
 
-    return __sys_io_uring_register(uring_static_cast(unsigned int, fd), opcode, arg, nr_args);
+    return internal__sys_io_uring_register(uring_static_cast(unsigned int, fd), opcode, arg, nr_args);
 }
 
 IOURINGINLINE int io_uring_register_buffers_update_tag(struct io_uring*    ring,
@@ -334,13 +334,13 @@ static int increase_rlimit_nofile(unsigned nr) noexcept {
     int           ret;
     struct rlimit rlim;
 
-    ret = __sys_getrlimit(RLIMIT_NOFILE, &rlim);
+    ret = internal__sys_getrlimit(RLIMIT_NOFILE, &rlim);
     if (ret < 0)
         return ret;
 
     if (rlim.rlim_cur < nr) {
         rlim.rlim_cur += nr;
-        __sys_setrlimit(RLIMIT_NOFILE, &rlim);
+        internal__sys_setrlimit(RLIMIT_NOFILE, &rlim);
     }
 
     return 0;
@@ -523,7 +523,7 @@ IOURINGINLINE int io_uring_close_ring_fd(struct io_uring* ring) noexcept {
     if (ring->ring_fd == -1)
         return -EBADF;
 
-    __sys_close(ring->ring_fd);
+    internal__sys_close(ring->ring_fd);
     ring->ring_fd = -1;
     return 1;
 }
@@ -697,12 +697,12 @@ IOURINGINLINE int io_uring_alloc_huge(unsigned                entries,
             buf_size    = huge_page_size;
             map_hugetlb = MAP_HUGETLB;
         }
-        ptr = __sys_mmap(nullptr,
-                         buf_size,
-                         PROT_READ | PROT_WRITE,
-                         MAP_SHARED | MAP_ANONYMOUS | map_hugetlb,
-                         -1,
-                         0);
+        ptr = internal__sys_mmap(nullptr,
+                                 buf_size,
+                                 PROT_READ | PROT_WRITE,
+                                 MAP_SHARED | MAP_ANONYMOUS | map_hugetlb,
+                                 -1,
+                                 0);
         if (IS_ERR(ptr))
             return PTR_ERR(ptr);
     }
@@ -721,14 +721,14 @@ IOURINGINLINE int io_uring_alloc_huge(unsigned                entries,
             buf_size    = huge_page_size;
             map_hugetlb = MAP_HUGETLB;
         }
-        ptr = __sys_mmap(nullptr,
-                         buf_size,
-                         PROT_READ | PROT_WRITE,
-                         MAP_SHARED | MAP_ANONYMOUS | map_hugetlb,
-                         -1,
-                         0);
+        ptr = internal__sys_mmap(nullptr,
+                                 buf_size,
+                                 PROT_READ | PROT_WRITE,
+                                 MAP_SHARED | MAP_ANONYMOUS | map_hugetlb,
+                                 -1,
+                                 0);
         if (IS_ERR(ptr)) {
-            __sys_munmap(sq->sqes, 1);
+            internal__sys_munmap(sq->sqes, 1);
             return PTR_ERR(ptr);
         }
         sq->ring_ptr = ptr;
@@ -745,9 +745,9 @@ IOURINGINLINE int io_uring_alloc_huge(unsigned                entries,
 
 IOURINGINLINE void io_uring_unmap_rings(struct io_uring_sq* sq, struct io_uring_cq* cq) noexcept {
     if (sq->ring_sz)
-        __sys_munmap(sq->ring_ptr, sq->ring_sz);
+        internal__sys_munmap(sq->ring_ptr, sq->ring_sz);
     if (cq->ring_ptr && cq->ring_sz && cq->ring_ptr != sq->ring_ptr)
-        __sys_munmap(cq->ring_ptr, cq->ring_sz);
+        internal__sys_munmap(cq->ring_ptr, cq->ring_sz);
 }
 
 
@@ -801,20 +801,24 @@ io_uring_mmap(int fd, struct io_uring_params* p, struct io_uring_sq* sq, struct 
             sq->ring_sz = cq->ring_sz;
         cq->ring_sz = sq->ring_sz;
     }
-    sq->ring_ptr =
-      __sys_mmap(0, sq->ring_sz, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, fd, IORING_OFF_SQ_RING);
+    sq->ring_ptr = internal__sys_mmap(0,
+                                      sq->ring_sz,
+                                      PROT_READ | PROT_WRITE,
+                                      MAP_SHARED | MAP_POPULATE,
+                                      fd,
+                                      IORING_OFF_SQ_RING);
     if (IS_ERR(sq->ring_ptr))
         return PTR_ERR(sq->ring_ptr);
 
     if (p->features & IORING_FEAT_SINGLE_MMAP) {
         cq->ring_ptr = sq->ring_ptr;
     } else {
-        cq->ring_ptr = __sys_mmap(0,
-                                  cq->ring_sz,
-                                  PROT_READ | PROT_WRITE,
-                                  MAP_SHARED | MAP_POPULATE,
-                                  fd,
-                                  IORING_OFF_CQ_RING);
+        cq->ring_ptr = internal__sys_mmap(0,
+                                          cq->ring_sz,
+                                          PROT_READ | PROT_WRITE,
+                                          MAP_SHARED | MAP_POPULATE,
+                                          fd,
+                                          IORING_OFF_CQ_RING);
         if (IS_ERR(cq->ring_ptr)) {
             ret          = PTR_ERR(cq->ring_ptr);
             cq->ring_ptr = nullptr;
@@ -826,12 +830,12 @@ io_uring_mmap(int fd, struct io_uring_params* p, struct io_uring_sq* sq, struct 
     if (p->flags & IORING_SETUP_SQE128)
         size += 64;
     sq->sqes = uring_reinterpret_cast(struct io_uring_sqe*,
-                                      __sys_mmap(0,
-                                                 size * p->sq_entries,
-                                                 PROT_READ | PROT_WRITE,
-                                                 MAP_SHARED | MAP_POPULATE,
-                                                 fd,
-                                                 IORING_OFF_SQES));
+                                      internal__sys_mmap(0,
+                                                         size * p->sq_entries,
+                                                         PROT_READ | PROT_WRITE,
+                                                         MAP_SHARED | MAP_POPULATE,
+                                                         fd,
+                                                         IORING_OFF_SQES));
     if (IS_ERR(sq->sqes)) {
         ret = PTR_ERR(sq->sqes);
     err:
@@ -882,10 +886,10 @@ IOURINGINLINE int internal__io_uring_queue_init_params(unsigned                e
             ring->int_flags |= INT_FLAG_APP_MEM;
     }
 
-    int const fd = __sys_io_uring_setup(entries, p);
+    int const fd = internal__sys_io_uring_setup(entries, p);
     if (fd < 0) {
         if ((p->flags & IORING_SETUP_NO_MMAP) && !(ring->int_flags & INT_FLAG_APP_MEM)) {
-            __sys_munmap(ring->sq.sqes, 1);
+            internal__sys_munmap(ring->sq.sqes, 1);
             io_uring_unmap_rings(&ring->sq, &ring->cq);
         }
         return fd;
@@ -894,7 +898,7 @@ IOURINGINLINE int internal__io_uring_queue_init_params(unsigned                e
     if (!(p->flags & IORING_SETUP_NO_MMAP)) {
         ret = io_uring_queue_mmap(fd, p, ring);
         if (ret) {
-            __sys_close(fd);
+            internal__sys_close(fd);
             return ret;
         }
     } else {
@@ -980,18 +984,18 @@ uring__cold IOURINGINLINE int io_uring_ring_dontfork(struct io_uring* ring) noex
     if (ring->flags & IORING_SETUP_SQE128)
         len += 64;
     len *= ring->sq.ring_entries;
-    int ret = __sys_madvise(ring->sq.sqes, len, MADV_DONTFORK);
+    int ret = internal__sys_madvise(ring->sq.sqes, len, MADV_DONTFORK);
     if (ret < 0)
         return ret;
 
     len = ring->sq.ring_sz;
-    ret = __sys_madvise(ring->sq.ring_ptr, len, MADV_DONTFORK);
+    ret = internal__sys_madvise(ring->sq.ring_ptr, len, MADV_DONTFORK);
     if (ret < 0)
         return ret;
 
     if (ring->cq.ring_ptr != ring->sq.ring_ptr) {
         len = ring->cq.ring_sz;
-        ret = __sys_madvise(ring->cq.ring_ptr, len, MADV_DONTFORK);
+        ret = internal__sys_madvise(ring->cq.ring_ptr, len, MADV_DONTFORK);
         if (ret < 0)
             return ret;
     }
@@ -1008,11 +1012,11 @@ uring__cold IOURINGINLINE void io_uring_queue_exit(struct io_uring* ring) noexce
         size_t sqe_size = sizeof(struct io_uring_sqe);
         if (ring->flags & IORING_SETUP_SQE128)
             sqe_size += 64;
-        __sys_munmap(sq->sqes, sqe_size * sq->ring_entries);
+        internal__sys_munmap(sq->sqes, sqe_size * sq->ring_entries);
         io_uring_unmap_rings(sq, cq);
     } else {
         if (!(ring->int_flags & INT_FLAG_APP_MEM)) {
-            __sys_munmap(sq->sqes, *sq->kring_entries * sizeof(struct io_uring_sqe));
+            internal__sys_munmap(sq->sqes, *sq->kring_entries * sizeof(struct io_uring_sqe));
             io_uring_unmap_rings(sq, cq);
         }
     }
@@ -1024,7 +1028,7 @@ uring__cold IOURINGINLINE void io_uring_queue_exit(struct io_uring* ring) noexce
     if (ring->int_flags & INT_FLAG_REG_RING)
         io_uring_unregister_ring_fd(ring);
     if (ring->ring_fd != -1)
-        __sys_close(ring->ring_fd);
+        internal__sys_close(ring->ring_fd);
 }
 
 
@@ -1044,7 +1048,11 @@ IOURINGINLINE int io_uring_get_events(struct io_uring* ring) noexcept {
 
     if (ring->int_flags & INT_FLAG_REG_RING)
         flags |= IORING_ENTER_REGISTERED_RING;
-    return __sys_io_uring_enter(uring_static_cast(unsigned int, ring->enter_ring_fd), 0, 0, flags, nullptr);
+    return internal__sys_io_uring_enter(uring_static_cast(unsigned int, ring->enter_ring_fd),
+                                        0,
+                                        0,
+                                        flags,
+                                        nullptr);
 }
 
 /*
@@ -1263,12 +1271,12 @@ IOURINGINLINE int internal_io_uring_get_cqe(struct io_uring*      ring,
 
         if (ring->int_flags & INT_FLAG_REG_RING)
             flags |= IORING_ENTER_REGISTERED_RING;
-        ret = __sys_io_uring_enter2(ring->enter_ring_fd,
-                                    data->submit,
-                                    data->wait_nr,
-                                    flags,
-                                    uring_reinterpret_cast(sigset_t*, data->arg),
-                                    data->sz);
+        ret = internal__sys_io_uring_enter2(ring->enter_ring_fd,
+                                            data->submit,
+                                            data->wait_nr,
+                                            flags,
+                                            uring_reinterpret_cast(sigset_t*, data->arg),
+                                            data->sz);
         if (ret < 0) {
             if (!err)
                 err = ret;
@@ -1469,7 +1477,7 @@ IOURINGINLINE int internal__io_uring_submit(struct io_uring* ring,
         if (ring->int_flags & INT_FLAG_REG_RING)
             flags |= IORING_ENTER_REGISTERED_RING;
 
-        ret = __sys_io_uring_enter(ring->enter_ring_fd, submitted, wait_nr, flags, nullptr);
+        ret = internal__sys_io_uring_enter(ring->enter_ring_fd, submitted, wait_nr, flags, nullptr);
     } else
         ret = uring_static_cast(int, submitted);
 
@@ -1508,7 +1516,7 @@ IOURINGINLINE int internal__io_uring_sqring_wait(struct io_uring* ring) noexcept
     if (ring->int_flags & INT_FLAG_REG_RING)
         flags |= IORING_ENTER_REGISTERED_RING;
 
-    return __sys_io_uring_enter(ring->enter_ring_fd, 0, 0, flags, nullptr);
+    return internal__sys_io_uring_enter(ring->enter_ring_fd, 0, 0, flags, nullptr);
 }
 
 IOURINGINLINE void io_uring_prep_timeout(struct io_uring_sqe*      sqe,
@@ -1726,8 +1734,12 @@ br_setup(struct io_uring* ring, unsigned int nentries, int bgid, unsigned int fl
     off_t const  off       = IORING_OFF_PBUF_RING | (unsigned long long) bgid << IORING_OFF_PBUF_SHIFT;
     size_t const ring_size = nentries * sizeof(struct io_uring_buf);
 
-    struct io_uring_buf_ring* br =
-      __sys_mmap(nullptr, ring_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_POPULATE, ring->ring_fd, off);
+    struct io_uring_buf_ring* br = internal__sys_mmap(nullptr,
+                                                      ring_size,
+                                                      PROT_READ | PROT_WRITE,
+                                                      MAP_SHARED | MAP_POPULATE,
+                                                      ring->ring_fd,
+                                                      off);
     if (IS_ERR(br)) {
         *ret = PTR_ERR(br);
         return nullptr;
@@ -1749,7 +1761,7 @@ br_setup(struct io_uring* ring, unsigned int nentries, int bgid, unsigned int fl
     size_t const              ring_size = nentries * sizeof(struct io_uring_buf);
     struct io_uring_buf_ring* br        = uring_reinterpret_cast(
       struct io_uring_buf_ring*,
-      __sys_mmap(nullptr, ring_size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0));
+      internal__sys_mmap(nullptr, ring_size, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0));
     if (IS_ERR(br)) {
         *ret = PTR_ERR(br);
         return nullptr;
@@ -1762,7 +1774,7 @@ br_setup(struct io_uring* ring, unsigned int nentries, int bgid, unsigned int fl
     *ret           = 0;
     int const lret = io_uring_register_buf_ring(ring, &reg, flags);
     if (lret) {
-        __sys_munmap(br, ring_size);
+        internal__sys_munmap(br, ring_size);
         *ret = lret;
         br   = nullptr;
     }
@@ -1793,7 +1805,7 @@ IOURINGINLINE int io_uring_free_buf_ring(struct io_uring*          ring,
     int const ret = io_uring_unregister_buf_ring(ring, bgid);
     if (ret)
         return ret;
-    __sys_munmap(br, nentries * sizeof(struct io_uring_buf));
+    internal__sys_munmap(br, nentries * sizeof(struct io_uring_buf));
     return 0;
 }
 

@@ -72,8 +72,12 @@ struct uring_heap {
 static inline void* internal__uring_malloc(size_t len) {
     struct uring_heap* heap;
 
-    heap =
-      __sys_mmap(nullptr, sizeof(*heap) + len, PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+    heap = internal__sys_mmap(nullptr,
+                              sizeof(*heap) + len,
+                              PROT_READ | PROT_WRITE,
+                              MAP_ANONYMOUS | MAP_PRIVATE,
+                              -1,
+                              0);
     if (IS_ERR(heap))
         return nullptr;
 
@@ -88,7 +92,7 @@ static inline void internal__uring_free(void* p) {
         return;
 
     heap = container_of(p, struct uring_heap, user_p);
-    __sys_munmap(heap, heap->len);
+    internal__sys_munmap(heap, heap->len);
 }
 
 #    define malloc(LEN)         internal__uring_malloc(LEN)

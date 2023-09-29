@@ -5,7 +5,7 @@
 
 #include <fcntl.h>
 
-static inline int __sys_open(const char* pathname, int flags, mode_t mode) {
+static inline int internal__sys_open(const char* pathname, int flags, mode_t mode) {
     /*
      * Some architectures don't have __NR_open, but __NR_openat.
      */
@@ -18,12 +18,12 @@ static inline int __sys_open(const char* pathname, int flags, mode_t mode) {
 #endif
 }
 
-static inline ssize_t __sys_read(int fd, void* buffer, size_t size) {
+static inline ssize_t internal__sys_read(int fd, void* buffer, size_t size) {
     __do_syscall3(__NR_read, fd, buffer, size);
     return (ssize_t) ret;
 }
 
-static inline void* __sys_mmap(void* addr, size_t length, int prot, int flags, int fd, off_t offset) {
+static inline void* internal__sys_mmap(void* addr, size_t length, int prot, int flags, int fd, off_t offset) {
     int nr;
 
 #if defined(__NR_mmap2)
@@ -36,58 +36,58 @@ static inline void* __sys_mmap(void* addr, size_t length, int prot, int flags, i
     return (void*) ret;
 }
 
-static inline int __sys_munmap(void* addr, size_t length) {
+static inline int internal__sys_munmap(void* addr, size_t length) {
     __do_syscall2(__NR_munmap, addr, length);
     return (int) ret;
 }
 
-static inline int __sys_madvise(void* addr, size_t length, int advice) {
+static inline int internal__sys_madvise(void* addr, size_t length, int advice) {
     __do_syscall3(__NR_madvise, addr, length, advice);
     return (int) ret;
 }
 
-static inline int __sys_getrlimit(int resource, struct rlimit* rlim) {
+static inline int internal__sys_getrlimit(int resource, struct rlimit* rlim) {
     __do_syscall2(__NR_getrlimit, resource, rlim);
     return (int) ret;
 }
 
-static inline int __sys_setrlimit(int resource, const struct rlimit* rlim) {
+static inline int internal__sys_setrlimit(int resource, const struct rlimit* rlim) {
     __do_syscall2(__NR_setrlimit, resource, rlim);
     return (int) ret;
 }
 
-static inline int __sys_close(int fd) {
+static inline int internal__sys_close(int fd) {
     __do_syscall1(__NR_close, fd);
     return (int) ret;
 }
 
 static inline int
-__sys_io_uring_register(unsigned int fd, unsigned int opcode, const void* arg, unsigned int nr_args) {
+internal__sys_io_uring_register(unsigned int fd, unsigned int opcode, const void* arg, unsigned int nr_args) {
     __do_syscall4(__NR_io_uring_register, fd, opcode, arg, nr_args);
     return (int) ret;
 }
 
-static inline int __sys_io_uring_setup(unsigned int entries, struct io_uring_params* p) {
+static inline int internal__sys_io_uring_setup(unsigned int entries, struct io_uring_params* p) {
     __do_syscall2(__NR_io_uring_setup, entries, p);
     return (int) ret;
 }
 
-static inline int __sys_io_uring_enter2(unsigned int fd,
-                                        unsigned int to_submit,
-                                        unsigned int min_complete,
-                                        unsigned int flags,
-                                        sigset_t*    sig,
-                                        size_t       sz) {
+static inline int internal__sys_io_uring_enter2(unsigned int fd,
+                                                unsigned int to_submit,
+                                                unsigned int min_complete,
+                                                unsigned int flags,
+                                                sigset_t*    sig,
+                                                size_t       sz) {
     __do_syscall6(__NR_io_uring_enter, fd, to_submit, min_complete, flags, sig, sz);
     return (int) ret;
 }
 
-static inline int __sys_io_uring_enter(unsigned int fd,
-                                       unsigned int to_submit,
-                                       unsigned int min_complete,
-                                       unsigned int flags,
-                                       sigset_t*    sig) {
-    return __sys_io_uring_enter2(fd, to_submit, min_complete, flags, sig, _NSIG / 8);
+static inline int internal__sys_io_uring_enter(unsigned int fd,
+                                               unsigned int to_submit,
+                                               unsigned int min_complete,
+                                               unsigned int flags,
+                                               sigset_t*    sig) {
+    return internal__sys_io_uring_enter2(fd, to_submit, min_complete, flags, sig, _NSIG / 8);
 }
 
 #endif
