@@ -64,8 +64,6 @@ struct open_how {
 // todo: check for statx
 
 
-#include <stdio.h>
-#include <string.h>
 
 #ifdef __cplusplus
 #    include <iterator>
