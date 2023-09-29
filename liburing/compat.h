@@ -64,28 +64,29 @@ struct open_how {
 // todo: check for statx
 
 
-
+/// This little utility is designed to get away with C and C++ not
+/// allowing pointer arithmetic on void pointers.
 #ifdef __cplusplus
 #    include <iterator>
 //// This is commented out because the C implementation's non-void-pointers implementation yields warning
 //// when it's actually void(const)*.
 // template <typename T,
 //           typename NType = typename std::iterator_traits<T *>::difference_type>
-// [[nodiscard]] static constexpr auto next_ptr(T *ptr, NType n = 1) noexcept {
+// [[nodiscard]] static constexpr auto io_uring_next_void_ptr(T *ptr, NType n = 1) noexcept {
 //     return std::next(
 //       ptr, static_cast<typename std::iterator_traits<T *>::difference_type>(n));
 // }
 template <typename NType = std::ptrdiff_t>
-[[nodiscard]] static inline auto next_ptr(void const* ptr, NType n = 1) noexcept {
+[[nodiscard]] static inline auto io_uring_next_void_ptr(void const* ptr, NType n = 1) noexcept {
     return std::next(reinterpret_cast<std::intptr_t const*>(ptr), static_cast<std::ptrdiff_t>(n));
 }
 template <typename NType = std::ptrdiff_t>
-[[nodiscard]] static inline auto next_ptr(void* ptr, NType n = 1) noexcept {
+[[nodiscard]] static inline auto io_uring_next_void_ptr(void* ptr, NType n = 1) noexcept {
     return std::next(reinterpret_cast<std::intptr_t*>(ptr), static_cast<std::ptrdiff_t>(n));
 }
 #else
 #    include <stdint.h>
-#    define next_ptr(ptr, N)                      \
+#    define io_uring_next_void_ptr(ptr, N)        \
         _Generic((ptr),                           \
           void*: ((void*) ((intptr_t*) ptr + N)), \
           void const*: ((void const*) ((intptr_t const*) ptr + N)))

@@ -709,7 +709,7 @@ IOURINGINLINE int io_uring_alloc_huge(unsigned                entries,
 
     sq->sqes = uring_reinterpret_cast(struct io_uring_sqe*, ptr);
     if (mem_used <= buf_size) {
-        sq->ring_ptr = next_ptr(uring_reinterpret_cast(void*, sq->sqes), sqes_mem);
+        sq->ring_ptr = io_uring_next_void_ptr(uring_reinterpret_cast(void*, sq->sqes), sqes_mem);
         /* clear ring sizes, we have just one mmap() to undo */
         cq->ring_sz = 0;
         sq->ring_sz = 0;
@@ -754,22 +754,30 @@ IOURINGINLINE void io_uring_unmap_rings(struct io_uring_sq* sq, struct io_uring_
 IOURINGINLINE void io_uring_setup_ring_pointers(struct io_uring_params* p,
                                                 struct io_uring_sq*     sq,
                                                 struct io_uring_cq*     cq) noexcept {
-    sq->khead         = uring_reinterpret_cast(unsigned int*, next_ptr(sq->ring_ptr, p->sq_off.head));
-    sq->ktail         = uring_reinterpret_cast(unsigned int*, next_ptr(sq->ring_ptr, p->sq_off.tail));
-    sq->kring_mask    = uring_reinterpret_cast(unsigned int*, next_ptr(sq->ring_ptr, p->sq_off.ring_mask));
-    sq->kring_entries = uring_reinterpret_cast(unsigned int*, next_ptr(sq->ring_ptr, p->sq_off.ring_entries));
-    sq->kflags        = uring_reinterpret_cast(unsigned int*, next_ptr(sq->ring_ptr, p->sq_off.flags));
-    sq->kdropped      = uring_reinterpret_cast(unsigned int*, next_ptr(sq->ring_ptr, p->sq_off.dropped));
-    sq->array         = uring_reinterpret_cast(unsigned int*, next_ptr(sq->ring_ptr, p->sq_off.array));
+    sq->khead = uring_reinterpret_cast(unsigned int*, io_uring_next_void_ptr(sq->ring_ptr, p->sq_off.head));
+    sq->ktail = uring_reinterpret_cast(unsigned int*, io_uring_next_void_ptr(sq->ring_ptr, p->sq_off.tail));
+    sq->kring_mask =
+      uring_reinterpret_cast(unsigned int*, io_uring_next_void_ptr(sq->ring_ptr, p->sq_off.ring_mask));
+    sq->kring_entries =
+      uring_reinterpret_cast(unsigned int*, io_uring_next_void_ptr(sq->ring_ptr, p->sq_off.ring_entries));
+    sq->kflags = uring_reinterpret_cast(unsigned int*, io_uring_next_void_ptr(sq->ring_ptr, p->sq_off.flags));
+    sq->kdropped =
+      uring_reinterpret_cast(unsigned int*, io_uring_next_void_ptr(sq->ring_ptr, p->sq_off.dropped));
+    sq->array = uring_reinterpret_cast(unsigned int*, io_uring_next_void_ptr(sq->ring_ptr, p->sq_off.array));
 
-    cq->khead         = uring_reinterpret_cast(unsigned int*, next_ptr(cq->ring_ptr, p->cq_off.head));
-    cq->ktail         = uring_reinterpret_cast(unsigned int*, next_ptr(cq->ring_ptr, p->cq_off.tail));
-    cq->kring_mask    = uring_reinterpret_cast(unsigned int*, next_ptr(cq->ring_ptr, p->cq_off.ring_mask));
-    cq->kring_entries = uring_reinterpret_cast(unsigned int*, next_ptr(cq->ring_ptr, p->cq_off.ring_entries));
-    cq->koverflow     = uring_reinterpret_cast(unsigned int*, next_ptr(cq->ring_ptr, p->cq_off.overflow));
-    cq->cqes          = uring_reinterpret_cast(struct io_uring_cqe*, next_ptr(cq->ring_ptr, p->cq_off.cqes));
+    cq->khead = uring_reinterpret_cast(unsigned int*, io_uring_next_void_ptr(cq->ring_ptr, p->cq_off.head));
+    cq->ktail = uring_reinterpret_cast(unsigned int*, io_uring_next_void_ptr(cq->ring_ptr, p->cq_off.tail));
+    cq->kring_mask =
+      uring_reinterpret_cast(unsigned int*, io_uring_next_void_ptr(cq->ring_ptr, p->cq_off.ring_mask));
+    cq->kring_entries =
+      uring_reinterpret_cast(unsigned int*, io_uring_next_void_ptr(cq->ring_ptr, p->cq_off.ring_entries));
+    cq->koverflow =
+      uring_reinterpret_cast(unsigned int*, io_uring_next_void_ptr(cq->ring_ptr, p->cq_off.overflow));
+    cq->cqes =
+      uring_reinterpret_cast(struct io_uring_cqe*, io_uring_next_void_ptr(cq->ring_ptr, p->cq_off.cqes));
     if (p->cq_off.flags)
-        cq->kflags = uring_reinterpret_cast(unsigned int*, next_ptr(cq->ring_ptr, p->cq_off.flags));
+        cq->kflags =
+          uring_reinterpret_cast(unsigned int*, io_uring_next_void_ptr(cq->ring_ptr, p->cq_off.flags));
 
     sq->ring_mask    = *sq->kring_mask;
     sq->ring_entries = *sq->kring_entries;
