@@ -64,22 +64,33 @@ struct open_how {
 // todo: check for statx
 
 
+#include <stdio.h>
+#include <string.h>
 
 #ifdef __cplusplus
 #    include <iterator>
-template <typename T>
-[[nodiscard]] static constexpr auto
-next_ptr(T* ptr, typename std::iterator_traits<T*>::difference_type n = 1) noexcept {
-    return std::next(ptr, n);
+//// This is commented out because the C implementation's non-void-pointers implementation yields warning
+//// when it's actually void(const)*.
+// template <typename T,
+//           typename NType = typename std::iterator_traits<T *>::difference_type>
+// [[nodiscard]] static constexpr auto next_ptr(T *ptr, NType n = 1) noexcept {
+//     return std::next(
+//       ptr, static_cast<typename std::iterator_traits<T *>::difference_type>(n));
+// }
+template <typename NType = std::ptrdiff_t>
+[[nodiscard]] static inline auto next_ptr(void const* ptr, NType n = 1) noexcept {
+    return std::next(reinterpret_cast<std::intptr_t const*>(ptr), static_cast<std::ptrdiff_t>(n));
 }
-[[nodiscard]] static inline auto next_ptr(void const* ptr, std::ptrdiff_t n = 1) noexcept {
-    return std::next(reinterpret_cast<std::intptr_t const*>(ptr), n);
-}
-[[nodiscard]] static inline auto next_ptr(void* ptr, std::ptrdiff_t n = 1) noexcept {
-    return std::next(reinterpret_cast<std::intptr_t*>(ptr), n);
+template <typename NType = std::ptrdiff_t>
+[[nodiscard]] static inline auto next_ptr(void* ptr, NType n = 1) noexcept {
+    return std::next(reinterpret_cast<std::intptr_t*>(ptr), static_cast<std::ptrdiff_t>(n));
 }
 #else
-#    define next_ptr(ptr, N) (ptr + N)
+#    include <stdint.h>
+#    define next_ptr(ptr, N)                      \
+        _Generic((ptr),                           \
+          void*: ((void*) ((intptr_t*) ptr + N)), \
+          void const*: ((void const*) ((intptr_t const*) ptr + N)))
 #endif
 
 #endif

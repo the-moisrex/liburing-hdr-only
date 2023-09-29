@@ -709,7 +709,7 @@ IOURINGINLINE int io_uring_alloc_huge(unsigned                entries,
 
     sq->sqes = uring_reinterpret_cast(struct io_uring_sqe*, ptr);
     if (mem_used <= buf_size) {
-        sq->ring_ptr = uring_reinterpret_cast(void*, next_ptr(sq->sqes, sqes_mem));
+        sq->ring_ptr = next_ptr(uring_reinterpret_cast(void*, sq->sqes), sqes_mem);
         /* clear ring sizes, we have just one mmap() to undo */
         cq->ring_sz = 0;
         sq->ring_sz = 0;
