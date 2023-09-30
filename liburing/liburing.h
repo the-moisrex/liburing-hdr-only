@@ -231,7 +231,7 @@ do_register(struct io_uring* ring, unsigned int opcode, const void* arg, unsigne
     int fd;
 
     if (ring->int_flags & INT_FLAG_REG_REG_RING) {
-        opcode |= IORING_REGISTER_USE_REGISTERED_RING;
+        opcode |= uring_static_cast(unsigned int, IORING_REGISTER_USE_REGISTERED_RING);
         fd = ring->enter_ring_fd;
     } else {
         fd = ring->ring_fd;
@@ -603,7 +603,7 @@ IOURINGINLINE int internal__fls(int x) noexcept {
         return 0;
     return uring_static_cast(int,
                              uring_static_cast(int, 8 * sizeof(x)) -
-                               uring_static_cast(int, __builtin_clz(x)));
+                               __builtin_clz(uring_static_cast(unsigned int, x)));
 }
 
 IOURINGINLINE unsigned roundup_pow2(unsigned depth) noexcept {
