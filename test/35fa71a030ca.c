@@ -275,12 +275,12 @@ void execute_call(int call) {
             *(uint32_t*) 0x200000a8 = 0;
             *(uint32_t*) 0x200000ac = 0;
             *(uint64_t*) 0x200000b0 = 0;
-            res                     = __sys_io_uring_setup(0x64, (struct io_uring_params*) 0x20000040UL);
+            res                     = internal__sys_io_uring_setup(0x64, (struct io_uring_params*) 0x20000040UL);
             if (res != -1)
                 r[0] = res;
             break;
-        case 1: __sys_io_uring_register((long) r[0], 0, 0, 0); break;
-        case 2: __sys_io_uring_register((long) r[0], 0, 0, 0); break;
+        case 1: internal__sys_io_uring_register((long) r[0], 0, 0, 0); break;
+        case 2: internal__sys_io_uring_register((long) r[0], 0, 0, 0); break;
     }
 }
 

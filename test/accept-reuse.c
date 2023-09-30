@@ -17,7 +17,7 @@ static int sys_io_uring_enter(const int       fd,
                               const unsigned  min_complete,
                               const unsigned  flags,
                               sigset_t* const sig) {
-    return __sys_io_uring_enter(fd, to_submit, min_complete, flags, sig);
+    return internal__sys_io_uring_enter(fd, to_submit, min_complete, flags, sig);
 }
 
 static int submit_sqe(void) {

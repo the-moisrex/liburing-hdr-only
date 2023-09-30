@@ -76,7 +76,7 @@ static int test_single_timeout_many(struct io_uring* ring) {
     }
 
     gettimeofday(&tv, NULL);
-    ret = __sys_io_uring_enter(ring->ring_fd, 0, 4, IORING_ENTER_GETEVENTS, NULL);
+    ret = internal__sys_io_uring_enter(ring->ring_fd, 0, 4, IORING_ENTER_GETEVENTS, NULL);
     if (ret < 0) {
         fprintf(stderr, "%s: io_uring_enter %d\n", __FUNCTION__, ret);
         goto err;

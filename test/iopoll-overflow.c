@@ -45,7 +45,7 @@ static int test(struct io_uring* ring, int fd) {
 
     sleep(1);
 
-    ret = __sys_io_uring_enter(ring->ring_fd, 0, BUFFERS * 8, IORING_ENTER_GETEVENTS, NULL);
+    ret = internal__sys_io_uring_enter(ring->ring_fd, 0, BUFFERS * 8, IORING_ENTER_GETEVENTS, NULL);
 
     for (i = 0; i < BUFFERS * 8; i++) {
         struct io_uring_cqe* cqe;

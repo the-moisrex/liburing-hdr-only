@@ -45,7 +45,7 @@ static long syz_io_uring_setup(volatile long a0,
     void*                   vma2         = (void*) a3;
     void**                  ring_ptr_out = (void**) a4;
     void**                  sqes_ptr_out = (void**) a5;
-    uint32_t                fd_io_uring  = __sys_io_uring_setup(entries, setup_params);
+    uint32_t                fd_io_uring  = internal__sys_io_uring_setup(entries, setup_params);
     uint32_t sq_ring_sz = setup_params->sq_off.array + setup_params->sq_entries * sizeof(uint32_t);
     uint32_t cq_ring_sz = setup_params->cq_off.cqes + setup_params->cq_entries * SIZEOF_IO_URING_CQE;
     uint32_t ring_sz    = sq_ring_sz > cq_ring_sz ? sq_ring_sz : cq_ring_sz;
@@ -179,7 +179,7 @@ int main(int argc, char* argv[]) {
     *(uint8_t*) 0x2000003e  = 0;
     *(uint8_t*) 0x2000003f  = 0;
     syz_io_uring_submit(r[1], r[2], 0x20000000, 0);
-    __sys_io_uring_enter(r[0], 0x20450c, 0, 0ul, 0ul);
+    internal__sys_io_uring_enter(r[0], 0x20450c, 0, 0ul, 0ul);
     *(uint32_t*) 0x20000080 = 0x7ff;
     *(uint32_t*) 0x20000084 = 0x8b7;
     *(uint32_t*) 0x20000088 = 3;

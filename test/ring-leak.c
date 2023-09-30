@@ -26,7 +26,7 @@
 static int __io_uring_register_files(int ring_fd, int fd1, int fd2) {
     __s32 fds[2] = {fd1, fd2};
 
-    return __sys_io_uring_register(ring_fd, IORING_REGISTER_FILES, fds, 2);
+    return internal__sys_io_uring_register(ring_fd, IORING_REGISTER_FILES, fds, 2);
 }
 
 static int get_ring_fd(void) {
@@ -35,7 +35,7 @@ static int get_ring_fd(void) {
 
     memset(&p, 0, sizeof(p));
 
-    fd = __sys_io_uring_setup(2, &p);
+    fd = internal__sys_io_uring_setup(2, &p);
     if (fd < 0) {
         perror("io_uring_setup");
         return -1;

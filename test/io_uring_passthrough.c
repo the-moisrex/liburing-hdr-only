@@ -383,7 +383,7 @@ static int test_io_uring_submit_enters(const char* file) {
     }
 
     /* submit manually to avoid adding IORING_ENTER_GETEVENTS */
-    ret = __sys_io_uring_enter(ring.ring_fd, __io_uring_flush_sq(&ring), 0, 0, NULL);
+    ret = internal__sys_io_uring_enter(ring.ring_fd, __io_uring_flush_sq(&ring), 0, 0, NULL);
     if (ret < 0)
         goto err;
 

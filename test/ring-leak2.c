@@ -166,7 +166,7 @@ static void* client_thread(void* arg) {
         io_uring_submit(&ring);
         pthread_mutex_unlock(&lock);
 
-        ret = __sys_io_uring_enter(ring.ring_fd, 0, 1, IORING_ENTER_GETEVENTS, NULL);
+        ret = internal__sys_io_uring_enter(ring.ring_fd, 0, 1, IORING_ENTER_GETEVENTS, NULL);
         if (ret < 0) {
             perror("Error io_uring_enter...\n");
             exit(1);

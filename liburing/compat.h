@@ -67,6 +67,7 @@ struct open_how {
 /// This little utility is designed to get away with C and C++ not
 /// allowing pointer arithmetic on void pointers.
 #ifdef __cplusplus
+#    include <cstdint>
 #    include <iterator>
 //// This is commented out because the C implementation's non-void-pointers implementation yields warning
 //// when it's actually void(const)*.

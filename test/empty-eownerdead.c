@@ -26,7 +26,7 @@ int main(int argc, char* argv[]) {
     else if (ret < 0)
         goto err;
 
-    ret = __sys_io_uring_enter(ring.ring_fd, 0, 0, 0, NULL);
+    ret = internal__sys_io_uring_enter(ring.ring_fd, 0, 0, 0, NULL);
     if (ret < 0) {
         int __e = errno;
 

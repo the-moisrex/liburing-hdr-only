@@ -114,7 +114,7 @@ int main(int argc, char* argv[]) {
     *(uint32_t*) 0x20000068 = 0;
     *(uint32_t*) 0x2000006c = 0;
     *(uint64_t*) 0x20000070 = 0;
-    res                     = __sys_io_uring_setup(0x6a6, (struct io_uring_params*) 0x20000000ul);
+    res                     = internal__sys_io_uring_setup(0x6a6, (struct io_uring_params*) 0x20000000ul);
     if (res != -1)
         r[0] = res;
     res = socket(0x11ul, 2ul, 0x300ul);
@@ -122,6 +122,6 @@ int main(int argc, char* argv[]) {
         r[1] = res;
     *(uint32_t*) 0x20000080 = r[1];
     inject_fault(1);
-    __sys_io_uring_register(r[0], 2ul, (const void*) 0x20000080ul, 1ul);
+    internal__sys_io_uring_register(r[0], 2ul, (const void*) 0x20000080ul, 1ul);
     return T_EXIT_PASS;
 }

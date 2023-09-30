@@ -151,7 +151,7 @@ void execute_one(void) {
     *(uint32_t*) 0x200000e8 = 0;
     *(uint32_t*) 0x200000ec = 0;
     *(uint64_t*) 0x200000f0 = 0;
-    __sys_io_uring_setup(0x983, (struct io_uring_params*) 0x20000080);
+    internal__sys_io_uring_setup(0x983, (struct io_uring_params*) 0x20000080);
 }
 
 static void sig_int(int sig) {

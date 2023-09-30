@@ -47,6 +47,6 @@ int main(int argc, char* argv[]) {
     *(uint32_t*) 0x20000068 = 0;
     *(uint32_t*) 0x2000006c = 0;
     *(uint64_t*) 0x20000070 = 0;
-    __sys_io_uring_setup(0x7a6, (struct io_uring_params*) 0x20000000UL);
+    internal__sys_io_uring_setup(0x7a6, (struct io_uring_params*) 0x20000000UL);
     return T_EXIT_PASS;
 }

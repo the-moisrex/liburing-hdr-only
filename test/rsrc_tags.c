@@ -46,7 +46,7 @@ static int register_rsrc(struct io_uring* ring, int type, int nr, const void* ar
     if (type != TEST_IORING_RSRC_FILE)
         reg_type = IORING_REGISTER_BUFFERS2;
 
-    return __sys_io_uring_register(ring->ring_fd, reg_type, &reg, sizeof(reg));
+    return internal__sys_io_uring_register(ring->ring_fd, reg_type, &reg, sizeof(reg));
 }
 
 /*
@@ -66,7 +66,7 @@ static int update_rsrc(struct io_uring* ring, int type, int nr, int off, const v
     up_type = IORING_REGISTER_FILES_UPDATE2;
     if (type != TEST_IORING_RSRC_FILE)
         up_type = IORING_REGISTER_BUFFERS_UPDATE;
-    return __sys_io_uring_register(ring->ring_fd, up_type, &up, sizeof(up));
+    return internal__sys_io_uring_register(ring->ring_fd, up_type, &up, sizeof(up));
 }
 
 static bool has_rsrc_update(void) {
