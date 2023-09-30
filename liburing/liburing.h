@@ -601,7 +601,9 @@ IOURINGINLINE int io_uring_opcode_supported(const struct io_uring_probe* p, int 
 IOURINGINLINE int internal__fls(int x) noexcept {
     if (!x)
         return 0;
-    return uring_static_cast(int, uring_static_cast(int, 8) * sizeof(x) - __builtin_clz(x));
+    return uring_static_cast(int,
+                             uring_static_cast(int, 8 * sizeof(x)) -
+                               uring_static_cast(int, __builtin_clz(x)));
 }
 
 IOURINGINLINE unsigned roundup_pow2(unsigned depth) noexcept {
@@ -1051,7 +1053,7 @@ IOURINGINLINE int io_uring_get_events(struct io_uring* ring) noexcept {
     return internal__sys_io_uring_enter(uring_static_cast(unsigned int, ring->enter_ring_fd),
                                         0,
                                         0,
-                                        flags,
+                                        uring_static_cast(unsigned int, flags),
                                         nullptr);
 }
 
@@ -1271,12 +1273,12 @@ IOURINGINLINE int internal_io_uring_get_cqe(struct io_uring*      ring,
 
         if (ring->int_flags & INT_FLAG_REG_RING)
             flags |= IORING_ENTER_REGISTERED_RING;
-        ret = internal__sys_io_uring_enter2(ring->enter_ring_fd,
+        ret = internal__sys_io_uring_enter2(uring_static_cast(unsigned int, ring->enter_ring_fd),
                                             data->submit,
                                             data->wait_nr,
                                             flags,
                                             uring_reinterpret_cast(sigset_t*, data->arg),
-                                            data->sz);
+                                            uring_static_cast(size_t, data->sz));
         if (ret < 0) {
             if (!err)
                 err = ret;
@@ -1323,7 +1325,7 @@ IOURINGINLINE int io_uring_wait_cqes_new(struct io_uring*          ring,
 }
 
 /*
- * Return an sqe to fill. Application must later call io_uring_submit()
+ * Return a SQE to fill. Application must later call io_uring_submit()
  * when it's ready to tell the kernel about it. The caller may call this
  * function multiple times before calling io_uring_submit().
  *
@@ -1444,7 +1446,11 @@ IOURINGINLINE int io_uring_wait_cqes(struct io_uring*          ring,
             return to_submit;
     }
 
-    return internal__io_uring_get_cqe(ring, cqe_ptr, to_submit, wait_nr, sigmask);
+    return internal__io_uring_get_cqe(ring,
+                                      cqe_ptr,
+                                      uring_static_cast(unsigned, to_submit),
+                                      wait_nr,
+                                      sigmask);
 }
 
 /*
@@ -1477,7 +1483,11 @@ IOURINGINLINE int internal__io_uring_submit(struct io_uring* ring,
         if (ring->int_flags & INT_FLAG_REG_RING)
             flags |= IORING_ENTER_REGISTERED_RING;
 
-        ret = internal__sys_io_uring_enter(ring->enter_ring_fd, submitted, wait_nr, flags, nullptr);
+        ret = internal__sys_io_uring_enter(uring_static_cast(unsigned int, ring->enter_ring_fd),
+                                           submitted,
+                                           wait_nr,
+                                           flags,
+                                           nullptr);
     } else
         ret = uring_static_cast(int, submitted);
 
@@ -1511,12 +1521,16 @@ IOURINGINLINE int io_uring_submit_and_get_events(struct io_uring* ring) noexcept
 }
 
 IOURINGINLINE int internal__io_uring_sqring_wait(struct io_uring* ring) noexcept {
-    int flags = IORING_ENTER_SQ_WAIT;
+    unsigned int flags = IORING_ENTER_SQ_WAIT;
 
     if (ring->int_flags & INT_FLAG_REG_RING)
         flags |= IORING_ENTER_REGISTERED_RING;
 
-    return internal__sys_io_uring_enter(ring->enter_ring_fd, 0, 0, flags, nullptr);
+    return internal__sys_io_uring_enter(uring_static_cast(unsigned, ring->enter_ring_fd),
+                                        0,
+                                        0,
+                                        flags,
+                                        nullptr);
 }
 
 IOURINGINLINE void io_uring_prep_timeout(struct io_uring_sqe*      sqe,
@@ -1560,7 +1574,7 @@ IOURINGINLINE int internal__io_uring_submit_timeout(struct io_uring*          ri
     }
     io_uring_prep_timeout(sqe, ts, wait_nr, 0);
     sqe->user_data = LIBURING_UDATA_TIMEOUT;
-    return internal__io_uring_flush_sq(ring);
+    return uring_static_cast(int, internal__io_uring_flush_sq(ring));
 }
 
 IOURINGINLINE int io_uring_submit_and_wait_timeout(struct io_uring*          ring,
@@ -1568,7 +1582,7 @@ IOURINGINLINE int io_uring_submit_and_wait_timeout(struct io_uring*          rin
                                                    unsigned                  wait_nr,
                                                    struct __kernel_timespec* ts,
                                                    sigset_t*                 sigmask) noexcept {
-    int to_submit;
+    int to_submit = 0;
 
     if (ts) {
         if (ring->features & IORING_FEAT_EXT_ARG) {
@@ -1591,7 +1605,11 @@ IOURINGINLINE int io_uring_submit_and_wait_timeout(struct io_uring*          rin
     } else
         to_submit = uring_static_cast(int, internal__io_uring_flush_sq(ring));
 
-    return internal__io_uring_get_cqe(ring, cqe_ptr, to_submit, wait_nr, sigmask);
+    return internal__io_uring_get_cqe(ring,
+                                      cqe_ptr,
+                                      uring_static_cast(unsigned, to_submit),
+                                      wait_nr,
+                                      sigmask);
 }
 
 
@@ -1617,8 +1635,8 @@ uring__cold IOURINGINLINE struct io_uring_probe* io_uring_get_probe(void) noexce
 
 IOURINGINLINE size_t npages(size_t size, long page_size) noexcept {
     size--;
-    size /= page_size;
-    return internal__fls(uring_static_cast(int, size));
+    size /= uring_static_cast(size_t, page_size);
+    return uring_static_cast(size_t, internal__fls(uring_static_cast(int, size)));
 }
 
 #define KRING_SIZE 320
@@ -1635,14 +1653,14 @@ IOURINGINLINE size_t rings_size(struct io_uring_params* p,
     cq_size *= cq_entries;
     cq_size += KRING_SIZE;
     cq_size = (cq_size + 63) & ~63UL;
-    pages   = (size_t) 1 << npages(cq_size, page_size);
+    pages   = uring_static_cast(size_t, 1) << npages(cq_size, page_size);
 
     sq_size = sizeof(struct io_uring_sqe);
     if (p->flags & IORING_SETUP_SQE128)
         sq_size += 64;
     sq_size *= entries;
-    pages += (size_t) 1 << npages(sq_size, page_size);
-    return pages * page_size;
+    pages += uring_static_cast(size_t, 1) << npages(sq_size, page_size);
+    return pages * uring_static_cast(size_t, page_size);
 }
 
 /*
@@ -2354,7 +2372,8 @@ io_uring_recvmsg_payload_length(struct io_uring_recvmsg_out* o, int buf_len, str
 
     const unsigned long payload_start =
       uring_reinterpret_cast(unsigned long, io_uring_recvmsg_payload(o, msgh));
-    const unsigned long payload_end = uring_reinterpret_cast(unsigned long, o) + buf_len;
+    const unsigned long payload_end =
+      uring_reinterpret_cast(unsigned long, o) + uring_static_cast(unsigned long, buf_len);
     return uring_static_cast(unsigned int, (payload_end - payload_start));
 }
 
@@ -2583,7 +2602,7 @@ IOURINGINLINE void io_uring_prep_setxattr(struct io_uring_sqe* sqe,
                      len,
                      uring_static_cast(__u64, uring_reinterpret_cast(uintptr_t, value)));
     sqe->addr3       = uring_static_cast(__u64, uring_reinterpret_cast(uintptr_t, path));
-    sqe->xattr_flags = flags;
+    sqe->xattr_flags = uring_static_cast(__u32, flags);
 }
 
 IOURINGINLINE void io_uring_prep_fgetxattr(struct io_uring_sqe* sqe,
@@ -2612,7 +2631,7 @@ IOURINGINLINE void io_uring_prep_fsetxattr(struct io_uring_sqe* sqe,
                      name,
                      len,
                      uring_static_cast(__u64, uring_reinterpret_cast(uintptr_t, value)));
-    sqe->xattr_flags = flags;
+    sqe->xattr_flags = uring_static_cast(__u32, flags);
 }
 
 IOURINGINLINE void io_uring_prep_socket(struct io_uring_sqe* sqe,

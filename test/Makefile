@@ -24,7 +24,7 @@ endif
 
 CXXFLAGS ?= $(CFLAGS)
 override CFLAGS += $(XCFLAGS) -DLIBURING_BUILD_TEST -Wall -Wextra -std=c17 -pedantic
-override CXXFLAGS += $(XCFLAGS) -std=c++20 -DLIBURING_BUILD_TEST -Wall -Wextra
+override CXXFLAGS += $(XCFLAGS) -std=c++20 -DLIBURING_BUILD_TEST -Wall -Wextra -Wpedantic
 
 LDFLAGS ?=
 override LDFLAGS += -L../liburing/ -lpthread
