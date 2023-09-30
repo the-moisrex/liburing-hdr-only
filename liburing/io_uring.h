@@ -539,7 +539,7 @@ enum {
     IORING_REGISTER_LAST,
 
     /* flag added to the opcode to use a registered ring fd */
-    IORING_REGISTER_USE_REGISTERED_RING = 1U << 31
+    IORING_REGISTER_USE_REGISTERED_RING = (int) (1U << 31) /* technically it's -0 or 0x80000000! */
 };
 
 /* io-wq worker categories */

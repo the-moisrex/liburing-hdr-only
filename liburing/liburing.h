@@ -540,7 +540,7 @@ IOURINGINLINE int io_uring_unregister_buf_ring(struct io_uring* ring, int bgid) 
       .ring_entries = 0,
       .bgid         = uring_static_cast(__u16, bgid),
       .flags        = 0,
-      .resv         = {},
+      .resv         = {0, 0, 0},
     };
 
     return do_register(ring, IORING_UNREGISTER_PBUF_RING, &reg, 1);

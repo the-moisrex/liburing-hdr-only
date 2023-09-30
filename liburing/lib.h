@@ -42,8 +42,8 @@
 #    define uring__cold
 #else
 #    define uring__maybe_unused __attribute__((__unused__))
-#    define uring__hot          __attribute__((uring__hot__))
-#    define uring__cold         __attribute__((uring__cold__))
+#    define uring__hot          __attribute__((__hot__))
+#    define uring__cold         __attribute__((__cold__))
 #endif
 
 #ifdef CONFIG_NOLIBC
