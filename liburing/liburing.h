@@ -1398,7 +1398,7 @@ IOURINGINLINE unsigned internal__io_uring_flush_sq(struct io_uring* ring) noexce
      * kernel submitter could be updating this right now. For non-SQPOLL,
      * task itself does it, and there's no potential race. But even for
      * SQPOLL, the load is going to be potentially out-of-date the very
-     * instant it's done, regardless or whether or not it's done
+     * instant it's done, regardless or whether it's done
      * atomically. Worst case, we're going to be over-estimating what
      * we can submit. The point is, we need to be able to deal with this
      * situation regardless of any perceived atomicity.
@@ -1900,7 +1900,9 @@ IOURINGINLINE void io_uring_prep_rw(int                  op,
     sqe->personality = 0;
     sqe->file_index  = 0;
     sqe->addr3       = 0;
+#ifndef __cplusplus
     sqe->__pad2[0]   = 0;
+#endif
 }
 
 /*

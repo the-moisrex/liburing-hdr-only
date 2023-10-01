@@ -20,10 +20,6 @@
 #    include <linux/time_types.h>
 #endif
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /*
  * IO submission data structure (Submission Queue Entry)
  */
@@ -76,19 +72,74 @@ struct io_uring_sqe {
     } __attribute__((packed));
     /* personality to use, if used */
     __u16 personality;
+
+
+#ifdef __cplusplus
+    struct addr_len_type {
+      private:
+        __u16 addr_len = 0;
+        __u16 __pad3[1]{};
+
+      public:
+        constexpr                addr_len_type() noexcept = default;
+        constexpr                addr_len_type(__u16 len) noexcept : addr_len(len) {}
+        constexpr                addr_len_type(addr_len_type const&) noexcept = default;
+        constexpr                addr_len_type(addr_len_type&&) noexcept      = default;
+        constexpr addr_len_type& operator=(addr_len_type const&) noexcept     = default;
+        constexpr addr_len_type& operator=(addr_len_type&&) noexcept          = default;
+
+        constexpr operator __u16() const noexcept {
+            return addr_len;
+        }
+    };
+#endif
     union {
         __s32 splice_fd_in;
         __u32 file_index;
+#ifdef __cplusplus
+        addr_len_type addr_len;
+#else
         struct {
             __u16 addr_len;
             __u16 __pad3[1];
         };
+#endif
     };
+
+
+
+#ifdef __cplusplus
+    struct addr_type {
+      private:
+        __u64 addr3 = 0;
+        __u64 __pad2[1]{};
+
+      public:
+        constexpr            addr_type() noexcept = default;
+        constexpr            addr_type(__u64 addr) noexcept : addr3{addr} {}
+        constexpr            addr_type(addr_type const&) noexcept = default;
+        constexpr            addr_type(addr_type&&) noexcept      = default;
+        constexpr addr_type& operator=(addr_type const&) noexcept = default;
+        constexpr addr_type& operator=(addr_type&&) noexcept      = default;
+        constexpr addr_type& operator=(__u64 addr) noexcept {
+            addr3 = addr;
+            return *this;
+        }
+
+        constexpr operator __u64() const noexcept {
+            return addr3;
+        }
+    };
+#endif
     union {
+#ifdef __cplusplus
+        addr_type addr3;
+#else
         struct {
             __u64 addr3;
             __u64 __pad2[1];
         };
+#endif
         /*
          * If the ring is initialized with IORING_SETUP_SQE128, then
          * this field is used for 80 bytes of arbitrary command data
@@ -623,7 +674,49 @@ struct io_uring_buf {
 };
 
 struct io_uring_buf_ring {
+#ifdef __cplusplus
+    struct tail_type {
+      private:
+        __u64 resv1 = 0;
+        __u32 resv2 = 0;
+        __u16 resv3 = 0;
+        __u16 tail  = 0;
+
+      public:
+        constexpr            tail_type() noexcept = default;
+        constexpr            tail_type(__u16 inp_tail) noexcept : tail{inp_tail} {}
+        constexpr            tail_type(tail_type const&) noexcept = default;
+        constexpr            tail_type(tail_type&&) noexcept      = default;
+        constexpr tail_type& operator=(tail_type const&) noexcept = default;
+        constexpr tail_type& operator=(tail_type&&) noexcept      = default;
+        constexpr tail_type& operator=(__u16 inp_tail) noexcept {
+            tail = inp_tail;
+            return *this;
+        }
+
+        constexpr operator __u16() const noexcept {
+            return tail;
+        }
+
+        // Giving the wrong address for this type so it would match the C implementation's address
+        friend constexpr __u16 const* operator&(tail_type const& tail) noexcept {
+            return &tail.tail;
+        }
+
+        friend constexpr __u16* operator&(tail_type& tail) noexcept {
+            return &tail.tail;
+        }
+
+        constexpr tail_type& operator+=(__u16 inp_tail) noexcept {
+            tail += inp_tail;
+            return *this;
+        }
+    };
+#endif
     union {
+#ifdef __cplusplus
+        tail_type tail;
+#else
         /*
          * To avoid spilling into more pages than we need to, the
          * ring tail is overlaid with the io_uring_buf->resv field.
@@ -634,6 +727,7 @@ struct io_uring_buf_ring {
             __u16 resv3;
             __u16 tail;
         };
+#endif
         struct io_uring_buf bufs[0];
     };
 };
@@ -722,9 +816,5 @@ enum {
     SOCKET_URING_OP_SIOCINQ = 0,
     SOCKET_URING_OP_SIOCOUTQ,
 };
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif
