@@ -77,8 +77,8 @@ struct io_uring_sqe {
 #ifdef __cplusplus
     struct addr_len_type {
       private:
-        __u16 addr_len = 0;
-        __u16 __pad3[1]{};
+        __u16                  addr_len = 0;
+        [[maybe_unused]] __u16 __pad3[1]{};
 
       public:
         constexpr                addr_len_type() noexcept = default;
@@ -111,8 +111,8 @@ struct io_uring_sqe {
 #ifdef __cplusplus
     struct addr_type {
       private:
-        __u64 addr3 = 0;
-        __u64 __pad2[1]{};
+        __u64                  addr3 = 0;
+        [[maybe_unused]] __u64 pad2[1]{};
 
       public:
         constexpr            addr_type() noexcept = default;
@@ -677,10 +677,10 @@ struct io_uring_buf_ring {
 #ifdef __cplusplus
     struct tail_type {
       private:
-        __u64 resv1 = 0;
-        __u32 resv2 = 0;
-        __u16 resv3 = 0;
-        __u16 tail  = 0;
+        [[maybe_unused]] __u64 resv1 = 0;
+        [[maybe_unused]] __u32 resv2 = 0;
+        [[maybe_unused]] __u16 resv3 = 0;
+        __u16                  tail  = 0;
 
       public:
         constexpr            tail_type() noexcept = default;
@@ -699,12 +699,12 @@ struct io_uring_buf_ring {
         }
 
         // Giving the wrong address for this type so it would match the C implementation's address
-        friend constexpr __u16 const* operator&(tail_type const& tail) noexcept {
-            return &tail.tail;
+        friend constexpr __u16 const* operator&(tail_type const& self) noexcept {
+            return &self.tail;
         }
 
-        friend constexpr __u16* operator&(tail_type& tail) noexcept {
-            return &tail.tail;
+        friend constexpr __u16* operator&(tail_type& self) noexcept {
+            return &self.tail;
         }
 
         constexpr tail_type& operator+=(__u16 inp_tail) noexcept {
