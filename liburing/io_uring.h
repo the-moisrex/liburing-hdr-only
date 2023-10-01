@@ -28,13 +28,43 @@ struct io_uring_sqe {
     __u8  flags;  /* IOSQE_ flags */
     __u16 ioprio; /* ioprio for the request */
     __s32 fd;     /* file descriptor to do IO on */
+
+
+
+#ifdef __cplusplus
+    struct cmd_type {
+      private:
+        __u32                  cmd_op = 0;
+        [[maybe_unused]] __u32 pad1   = 0;
+
+      public:
+        constexpr           cmd_type() noexcept = default;
+        constexpr           cmd_type(__u32 inp_cmd_op) noexcept : cmd_op{inp_cmd_op} {}
+        constexpr           cmd_type(cmd_type const&) noexcept  = default;
+        constexpr           cmd_type(cmd_type&&) noexcept       = default;
+        constexpr cmd_type& operator=(cmd_type const&) noexcept = default;
+        constexpr cmd_type& operator=(cmd_type&&) noexcept      = default;
+        constexpr cmd_type& operator=(__u32 inp_cmd_op) noexcept {
+            cmd_op = inp_cmd_op;
+            return *this;
+        }
+
+        constexpr operator __u32() const noexcept {
+            return cmd_op;
+        }
+    };
+#endif
     union {
         __u64 off; /* offset into file */
         __u64 addr2;
+#ifdef __cplusplus
+        cmd_type cmd_op;
+#else
         struct {
             __u32 cmd_op;
             __u32 __pad1;
         };
+#endif
     };
     union {
         __u64 addr; /* pointer to buffer or iovecs */
