@@ -36,6 +36,10 @@
 #include <time.h>
 #include <unistd.h>
 
+#if __cplusplus
+#    include <new>
+#endif
+
 
 #ifndef uring_unlikely
 #    define uring_unlikely(cond) __builtin_expect(!!(cond), 0)
@@ -331,10 +335,9 @@ IOURINGINLINE int io_uring_register_files_update(struct io_uring* ring,
 }
 
 static int increase_rlimit_nofile(unsigned nr) noexcept {
-    int           ret;
     struct rlimit rlim;
 
-    ret = internal__sys_getrlimit(RLIMIT_NOFILE, &rlim);
+    int const ret = internal__sys_getrlimit(RLIMIT_NOFILE, &rlim);
     if (ret < 0)
         return ret;
 
@@ -803,7 +806,7 @@ io_uring_mmap(int fd, struct io_uring_params* p, struct io_uring_sq* sq, struct 
             sq->ring_sz = cq->ring_sz;
         cq->ring_sz = sq->ring_sz;
     }
-    sq->ring_ptr = internal__sys_mmap(0,
+    sq->ring_ptr = internal__sys_mmap(nullptr,
                                       sq->ring_sz,
                                       PROT_READ | PROT_WRITE,
                                       MAP_SHARED | MAP_POPULATE,
@@ -815,7 +818,7 @@ io_uring_mmap(int fd, struct io_uring_params* p, struct io_uring_sq* sq, struct 
     if (p->features & IORING_FEAT_SINGLE_MMAP) {
         cq->ring_ptr = sq->ring_ptr;
     } else {
-        cq->ring_ptr = internal__sys_mmap(0,
+        cq->ring_ptr = internal__sys_mmap(nullptr,
                                           cq->ring_sz,
                                           PROT_READ | PROT_WRITE,
                                           MAP_SHARED | MAP_POPULATE,
@@ -831,13 +834,19 @@ io_uring_mmap(int fd, struct io_uring_params* p, struct io_uring_sq* sq, struct 
     size = sizeof(struct io_uring_sqe);
     if (p->flags & IORING_SETUP_SQE128)
         size += 64;
-    sq->sqes = uring_reinterpret_cast(struct io_uring_sqe*,
-                                      internal__sys_mmap(0,
-                                                         size * p->sq_entries,
-                                                         PROT_READ | PROT_WRITE,
-                                                         MAP_SHARED | MAP_POPULATE,
-                                                         fd,
-                                                         IORING_OFF_SQES));
+    {
+        void* ptr = internal__sys_mmap(nullptr,
+                                       size * p->sq_entries,
+                                       PROT_READ | PROT_WRITE,
+                                       MAP_SHARED | MAP_POPULATE,
+                                       fd,
+                                       IORING_OFF_SQES);
+#ifdef __cplusplus
+        // calling constructors of io_uring_sqe and starting it's life time
+        new (ptr) io_uring_sqe[p->sq_entries];
+#endif
+        sq->sqes = uring_reinterpret_cast(struct io_uring_sqe*, ptr);
+    }
     if (IS_ERR(sq->sqes)) {
         ret = PTR_ERR(sq->sqes);
     err:
@@ -964,10 +973,15 @@ io_uring_queue_init_params(unsigned entries, struct io_uring* ring, struct io_ur
  */
 uring__cold IOURINGINLINE int
 io_uring_queue_init(unsigned entries, struct io_uring* ring, unsigned flags) noexcept {
+#ifdef __cplusplus
+    io_uring_params p{};
+    p.flags = flags;
+#else
     struct io_uring_params p;
 
     memset(&p, 0, sizeof(p));
     p.flags = flags;
+#endif
 
     return io_uring_queue_init_params(entries, ring, &p);
 }
@@ -1901,7 +1915,7 @@ IOURINGINLINE void io_uring_prep_rw(int                  op,
     sqe->file_index  = 0;
     sqe->addr3       = 0;
 #ifndef __cplusplus
-    sqe->__pad2[0]   = 0;
+    sqe->__pad2[0] = 0;
 #endif
 }
 

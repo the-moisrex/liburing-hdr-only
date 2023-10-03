@@ -79,18 +79,21 @@ struct open_how {
 // }
 template <typename NType = std::ptrdiff_t>
 [[nodiscard]] static inline auto io_uring_next_void_ptr(void const* ptr, NType n = 1) noexcept {
-    return std::next(reinterpret_cast<std::intptr_t const*>(ptr), static_cast<std::ptrdiff_t>(n));
+    // return reinterpret_cast<void const*>(reinterpret_cast<intptr_t const>(ptr) +
+    // static_cast<std::ptrdiff_t>(n));
+    return std::next(reinterpret_cast<char const*>(ptr), static_cast<std::ptrdiff_t>(n));
 }
 template <typename NType = std::ptrdiff_t>
 [[nodiscard]] static inline auto io_uring_next_void_ptr(void* ptr, NType n = 1) noexcept {
-    return std::next(reinterpret_cast<std::intptr_t*>(ptr), static_cast<std::ptrdiff_t>(n));
+    // return reinterpret_cast<void*>(reinterpret_cast<intptr_t>(ptr) + static_cast<std::ptrdiff_t>(n));
+    return std::next(reinterpret_cast<char*>(ptr), static_cast<std::ptrdiff_t>(n));
 }
 #else
 #    include <stdint.h>
-#    define io_uring_next_void_ptr(ptr, N)        \
-        _Generic((ptr),                           \
-          void*: ((void*) ((intptr_t*) ptr + N)), \
-          void const*: ((void const*) ((intptr_t const*) ptr + N)))
+#    define io_uring_next_void_ptr(ptr, N)    \
+        _Generic((ptr),                       \
+          void*: ((void*) ((char*) ptr + N)), \
+          void const*: ((void const*) ((char const*) ptr + N)))
 #endif
 
 #endif

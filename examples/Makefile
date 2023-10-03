@@ -1,14 +1,14 @@
 CPPFLAGS ?=
-override CPPFLAGS += -D_GNU_SOURCE -I../liburing/
-CFLAGS ?= -g -O2 -Wall
+override CPPFLAGS += -D_GNU_SOURCE -I../liburing/ -g -O0 -std=c17 -Wall -Wextra -Wpedantic
+CFLAGS ?= -g -O0 -Wall
 LDFLAGS ?=
 override LDFLAGS += -L../liburing/
 
-include ../Makefile.quiet
+# include ../Makefile.quiet
 
-ifneq ($(MAKECMDGOALS),clean)
-include ../config-host.mak
-endif
+# ifneq ($(MAKECMDGOALS),clean)
+# include ../config-host.mak
+# endif
 
 LDFLAGS ?=
 override LDFLAGS += -L../liburing/ -lpthread
