@@ -99,4 +99,20 @@ template <typename NType = std::ptrdiff_t>
           void const*: ((void const*) ((char const*) ptr + N)))
 #endif
 
+
+#ifdef __cplusplus
+#    include <memory>
+#    ifdef __cpp_lib_start_lifetime_as
+#        define io_uring_start_lifetime(type, ptr)             std::start_lifetime_as<type>(ptr)
+#        define io_uring_start_lifetime_array(type, ptr, size) std::start_lifetime_as<type>(ptr, size)
+#    else
+#        define io_uring_start_lifetime(type, ptr)             reinterpret_cast<type*>(ptr)
+#        define io_uring_start_lifetime_array(type, ptr, size) reinterpret_cast<type*>(ptr)
+#    endif
+#else
+#    define io_uring_start_lifetime(type, ptr)       (type*) (ptr)
+#    define io_uring_start_lifetime_array(type, ptr) (type*) (ptr)
+#endif
+
+
 #endif

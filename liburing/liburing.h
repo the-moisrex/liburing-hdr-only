@@ -841,12 +841,7 @@ io_uring_mmap(int fd, struct io_uring_params* p, struct io_uring_sq* sq, struct 
                                        MAP_SHARED | MAP_POPULATE,
                                        fd,
                                        IORING_OFF_SQES);
-#if defined(__cplusplus) && defined(__cpp_lib_start_lifetime_as)
-        // todo: what's up with IORING_SETUP_SQE128, and does affect this thing's lifetime?
-        sq->sqes = std::start_lifetime_as_array<io_uring_sqe>(ptr, p->sq_entries);
-#else
-        sq->sqes = uring_reinterpret_cast(struct io_uring_sqe*, ptr);
-#endif
+        sq->sqes  = io_uring_start_lifetime_array(struct io_uring_sqe, ptr, p->sq_entries);
     }
     if (IS_ERR(sq->sqes)) {
         ret = PTR_ERR(sq->sqes);
