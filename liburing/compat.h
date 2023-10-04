@@ -67,8 +67,8 @@ struct open_how {
 /// This little utility is designed to get away with C and C++ not
 /// allowing pointer arithmetic on void pointers.
 #ifdef __cplusplus
-#    include <cstdint>
-#    include <iterator>
+// #    include <cstdint>
+// #    include <iterator>
 //// This is commented out because the C implementation's non-void-pointers implementation yields warning
 //// when it's actually void(const)*.
 // template <typename T,
@@ -79,17 +79,20 @@ struct open_how {
 // }
 template <typename NType = std::ptrdiff_t>
 [[nodiscard]] static inline auto io_uring_next_void_ptr(void const* ptr, NType n = 1) noexcept {
-    // return reinterpret_cast<void const*>(reinterpret_cast<intptr_t const>(ptr) +
-    // static_cast<std::ptrdiff_t>(n));
-    return std::next(reinterpret_cast<char const*>(ptr), static_cast<std::ptrdiff_t>(n));
+    return static_cast<void const*>(static_cast<char const*>(ptr) + n);
+    // return std::next(reinterpret_cast<char const*>(ptr), static_cast<std::ptrdiff_t>(n));
 }
 template <typename NType = std::ptrdiff_t>
 [[nodiscard]] static inline auto io_uring_next_void_ptr(void* ptr, NType n = 1) noexcept {
-    // return reinterpret_cast<void*>(reinterpret_cast<intptr_t>(ptr) + static_cast<std::ptrdiff_t>(n));
-    return std::next(reinterpret_cast<char*>(ptr), static_cast<std::ptrdiff_t>(n));
+    // from: https://en.cppreference.com/w/cpp/language/lifetime
+    //  Pointers to storage without an object that were cast to possibly cv-qualified void* can only be
+    //  static_cast to pointers to possibly cv-qualified char, or possibly cv-qualified unsigned char, or
+    //  possibly cv-qualified std::byte (since C++17).
+    return static_cast<void*>(static_cast<char*>(ptr) + n);
+    // return std::next(reinterpret_cast<char*>(ptr), static_cast<std::ptrdiff_t>(n));
 }
 #else
-#    include <stdint.h>
+// #    include <stdint.h>
 #    define io_uring_next_void_ptr(ptr, N)    \
         _Generic((ptr),                       \
           void*: ((void*) ((char*) ptr + N)), \
