@@ -60,8 +60,28 @@ struct open_how {
 #    define uring_reinterpret_cast(To, What) (To)(What)
 #endif
 
-#define UNUSED(x) (void) (x)
-// todo: check for statx
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
+#    define CONFIG_HAVE_STATX
+#    include <sys/stat.h>
+#elif defined(STATX_TYPE) // check for glibc statx
+#    define CONFIG_HAVE_GLIBC_STATX
+#endif
+
+
+// futexv compatibility macros:
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 16, 0)
+#    include <inttypes.h>
+#    define FUTEX_32        2
+#    define FUTEX_WAITV_MAX 128
+struct futex_waitv {
+    uint64_t val;
+    uint64_t uaddr;
+    uint32_t flags;
+    uint32_t __reserved;
+};
+#else
+#    define CONFIG_HAVE_FUTEXV
+#endif
 
 
 /// This little utility is designed to get away with C and C++ not
@@ -110,8 +130,8 @@ template <typename NType = std::ptrdiff_t>
 #        define io_uring_start_lifetime_array(type, ptr, size) reinterpret_cast<type*>(ptr)
 #    endif
 #else
-#    define io_uring_start_lifetime(type, ptr)       (type*) (ptr)
-#    define io_uring_start_lifetime_array(type, ptr) (type*) (ptr)
+#    define io_uring_start_lifetime(type, ptr)             (type*) (ptr)
+#    define io_uring_start_lifetime_array(type, ptr, size) (type*) (ptr)
 #endif
 
 

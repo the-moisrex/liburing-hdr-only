@@ -59,18 +59,18 @@ int main(int argc, char* argv[]) {
         fsize += 4096;
     }
 
-    offset = 0;
-    i      = 0;
-    do {
-        sqe = io_uring_get_sqe(&ring);
-        if (!sqe)
-            break;
-        io_uring_prep_readv(sqe, fd, &iovecs[i], 1, offset);
-        offset += iovecs[i].iov_len;
-        i++;
-        if (offset > sb.st_size)
-            break;
-    } while (1);
+	offset = 0;
+	i = 0;
+	do {
+		sqe = io_uring_get_sqe(&ring);
+		if (!sqe)
+			break;
+		io_uring_prep_readv(sqe, fd, &iovecs[i], 1, offset);
+		offset += iovecs[i].iov_len;
+		i++;
+		if (offset >= sb.st_size)
+			break;
+	} while (1);
 
     ret = io_uring_submit(&ring);
     if (ret < 0) {
@@ -103,8 +103,9 @@ int main(int argc, char* argv[]) {
             break;
     }
 
-    printf("Submitted=%d, completed=%d, bytes=%lu\n", pending, done, (unsigned long) fsize);
-    close(fd);
-    io_uring_queue_exit(&ring);
-    return 0;
+	printf("Submitted=%d, completed=%d, bytes=%lu\n", pending, done,
+						(unsigned long) fsize);
+	close(fd);
+	io_uring_queue_exit(&ring);
+	return 0;
 }

@@ -33,6 +33,7 @@
 #include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/uio.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -676,7 +677,8 @@ IOURINGINLINE int io_uring_alloc_huge(unsigned                entries,
     ring_mem = cq_entries * sizeof(struct io_uring_cqe);
     if (p->flags & IORING_SETUP_CQE32)
         ring_mem *= 2;
-    ring_mem += sq_entries * sizeof(unsigned);
+    if (!(p->flags & IORING_SETUP_NO_SQARRAY))
+        ring_mem += sq_entries * sizeof(unsigned);
     mem_used = sqes_mem + ring_mem;
     mem_used = (mem_used + page_size - 1) & ~(page_size - 1);
 
@@ -768,7 +770,9 @@ IOURINGINLINE void io_uring_setup_ring_pointers(struct io_uring_params* p,
     sq->kflags = uring_reinterpret_cast(unsigned int*, io_uring_next_void_ptr(sq->ring_ptr, p->sq_off.flags));
     sq->kdropped =
       uring_reinterpret_cast(unsigned int*, io_uring_next_void_ptr(sq->ring_ptr, p->sq_off.dropped));
-    sq->array = uring_reinterpret_cast(unsigned int*, io_uring_next_void_ptr(sq->ring_ptr, p->sq_off.array));
+    if (!(p->flags & IORING_SETUP_NO_SQARRAY))
+        sq->array =
+          uring_reinterpret_cast(unsigned int*, io_uring_next_void_ptr(sq->ring_ptr, p->sq_off.array));
 
     cq->khead = uring_reinterpret_cast(unsigned int*, io_uring_next_void_ptr(cq->ring_ptr, p->cq_off.head));
     cq->ktail = uring_reinterpret_cast(unsigned int*, io_uring_next_void_ptr(cq->ring_ptr, p->cq_off.tail));
@@ -915,10 +919,13 @@ IOURINGINLINE int internal__io_uring_queue_init_params(unsigned                e
     /*
      * Directly map SQ slots to SQEs
      */
-    sq_array   = ring->sq.array;
     sq_entries = ring->sq.ring_entries;
-    for (index = 0; index < sq_entries; index++)
-        sq_array[index] = index;
+
+    if (!(p->flags & IORING_SETUP_NO_SQARRAY)) {
+        sq_array = ring->sq.array;
+        for (index = 0; index < sq_entries; index++)
+            sq_array[index] = index;
+    }
 
     ring->features      = p->features;
     ring->flags         = p->flags;
@@ -931,6 +938,26 @@ IOURINGINLINE int internal__io_uring_queue_init_params(unsigned                e
     }
 
     return ret;
+}
+
+
+IOURINGINLINE int io_uring_queue_init_try_nosqarr(unsigned                entries,
+                                                  struct io_uring*        ring,
+                                                  struct io_uring_params* p,
+                                                  void*                   buf,
+                                                  size_t                  buf_size) {
+    unsigned flags = p->flags;
+    int      ret;
+
+    p->flags |= IORING_SETUP_NO_SQARRAY;
+    ret = internal__io_uring_queue_init_params(entries, ring, p, buf, buf_size);
+
+    /* don't fallback if explicitly asked for NOSQARRAY */
+    if (ret != -EINVAL || (flags & IORING_SETUP_NO_SQARRAY))
+        return ret;
+
+    p->flags = flags;
+    return internal__io_uring_queue_init_params(entries, ring, p, buf, buf_size);
 }
 
 
@@ -953,12 +980,12 @@ IOURINGINLINE int io_uring_queue_init_mem(unsigned                entries,
                                           size_t                  buf_size) noexcept {
     /* should already be set... */
     p->flags |= IORING_SETUP_NO_MMAP;
-    return internal__io_uring_queue_init_params(entries, ring, p, buf, buf_size);
+    return io_uring_queue_init_try_nosqarr(entries, ring, p, buf, buf_size);
 }
 
 IOURINGINLINE int
 io_uring_queue_init_params(unsigned entries, struct io_uring* ring, struct io_uring_params* p) noexcept {
-    int const ret = internal__io_uring_queue_init_params(entries, ring, p, nullptr, 0);
+    int const ret = io_uring_queue_init_try_nosqarr(entries, ring, p, nullptr, 0);
     return ret >= 0 ? 0 : ret;
 }
 
@@ -2224,6 +2251,16 @@ io_uring_prep_read(struct io_uring_sqe* sqe, int fd, void* buf, unsigned nbytes,
     io_uring_prep_rw(IORING_OP_READ, sqe, fd, buf, nbytes, offset);
 }
 
+IOURINGINLINE void io_uring_prep_read_multishot(struct io_uring_sqe* sqe,
+                                                int                  fd,
+                                                unsigned             nbytes,
+                                                __u64                offset,
+                                                int                  buf_group) noexcept {
+    io_uring_prep_rw(IORING_OP_READ_MULTISHOT, sqe, fd, nullptr, nbytes, offset);
+    sqe->buf_group = buf_group;
+    sqe->flags |= IOSQE_BUFFER_SELECT;
+}
+
 IOURINGINLINE void io_uring_prep_write(struct io_uring_sqe* sqe,
                                        int                  fd,
                                        const void*          buf,
@@ -2239,7 +2276,7 @@ IOURINGINLINE void io_uring_prep_statx(struct io_uring_sqe* sqe,
                                        const char*          path,
                                        int                  flags,
                                        unsigned             mask,
-                                       struct statx*        statxbuf) {
+                                       struct statx*        statxbuf) noexcept {
     io_uring_prep_rw(IORING_OP_STATX,
                      sqe,
                      dfd,
@@ -2706,13 +2743,55 @@ IOURINGINLINE void io_uring_prep_cmd_sock(struct io_uring_sqe* sqe,
                                           int                  optname,
                                           void*                optval,
                                           int                  optlen) noexcept {
-    /* This will be removed once the get/setsockopt() patches land */
-    UNUSED(optlen);
-    UNUSED(optval);
-    UNUSED(level);
-    UNUSED(optname);
-    io_uring_prep_rw(IORING_OP_URING_CMD, sqe, fd, nullptr, 0, 0);
-    sqe->cmd_op = uring_static_cast(__u32, cmd_op);
+    io_uring_prep_rw(IORING_OP_URING_CMD, sqe, fd, NULL, 0, 0);
+    sqe->optval  = (unsigned long) (uintptr_t) optval;
+    sqe->optname = optname;
+    sqe->optlen  = optlen;
+    sqe->cmd_op  = cmd_op;
+    sqe->level   = level;
+}
+
+IOURINGINLINE void io_uring_prep_waitid(struct io_uring_sqe* sqe,
+                                        idtype_t             idtype,
+                                        id_t                 id,
+                                        siginfo_t*           infop,
+                                        int                  options,
+                                        unsigned int         flags) noexcept {
+    io_uring_prep_rw(IORING_OP_WAITID, sqe, id, nullptr, uring_static_cast(unsigned, idtype), 0);
+    sqe->waitid_flags = flags;
+    sqe->file_index   = options;
+    sqe->addr2        = (unsigned long) infop;
+}
+
+IOURINGINLINE void io_uring_prep_futex_wake(struct io_uring_sqe* sqe,
+                                            uint32_t*            futex,
+                                            uint64_t             val,
+                                            uint64_t             mask,
+                                            uint32_t             futex_flags,
+                                            unsigned int         flags) noexcept {
+    io_uring_prep_rw(IORING_OP_FUTEX_WAKE, sqe, futex_flags, futex, 0, val);
+    sqe->futex_flags = flags;
+    sqe->addr3       = mask;
+}
+
+IOURINGINLINE void io_uring_prep_futex_wait(struct io_uring_sqe* sqe,
+                                            uint32_t*            futex,
+                                            uint64_t             val,
+                                            uint64_t             mask,
+                                            uint32_t             futex_flags,
+                                            unsigned int         flags) noexcept {
+    io_uring_prep_rw(IORING_OP_FUTEX_WAIT, sqe, futex_flags, futex, 0, val);
+    sqe->futex_flags = flags;
+    sqe->addr3       = mask;
+}
+
+struct futex_waitv;
+IOURINGINLINE void io_uring_prep_futex_waitv(struct io_uring_sqe* sqe,
+                                             struct futex_waitv*  futex,
+                                             uint32_t             nr_futex,
+                                             unsigned int         flags) noexcept {
+    io_uring_prep_rw(IORING_OP_FUTEX_WAITV, sqe, 0, futex, nr_futex, 0);
+    sqe->futex_flags = flags;
 }
 
 /*
