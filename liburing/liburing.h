@@ -2257,7 +2257,7 @@ IOURINGINLINE void io_uring_prep_read_multishot(struct io_uring_sqe* sqe,
                                                 __u64                offset,
                                                 int                  buf_group) noexcept {
     io_uring_prep_rw(IORING_OP_READ_MULTISHOT, sqe, fd, nullptr, nbytes, offset);
-    sqe->buf_group = buf_group;
+    sqe->buf_group = uring_static_cast(__u16, buf_group);
     sqe->flags |= IOSQE_BUFFER_SELECT;
 }
 
@@ -2743,12 +2743,12 @@ IOURINGINLINE void io_uring_prep_cmd_sock(struct io_uring_sqe* sqe,
                                           int                  optname,
                                           void*                optval,
                                           int                  optlen) noexcept {
-    io_uring_prep_rw(IORING_OP_URING_CMD, sqe, fd, NULL, 0, 0);
-    sqe->optval  = (unsigned long) (uintptr_t) optval;
-    sqe->optname = optname;
-    sqe->optlen  = optlen;
-    sqe->cmd_op  = cmd_op;
-    sqe->level   = level;
+    io_uring_prep_rw(IORING_OP_URING_CMD, sqe, fd, nullptr, 0, 0);
+    sqe->optval  = uring_static_cast(__u64, uring_reinterpret_cast(uintptr_t, optval));
+    sqe->optname = uring_static_cast(__u32, optname);
+    sqe->optlen  = uring_static_cast(__u32, optlen);
+    sqe->cmd_op  = uring_static_cast(__u32, cmd_op);
+    sqe->level   = uring_static_cast(__u32, level);
 }
 
 IOURINGINLINE void io_uring_prep_waitid(struct io_uring_sqe* sqe,
@@ -2757,10 +2757,15 @@ IOURINGINLINE void io_uring_prep_waitid(struct io_uring_sqe* sqe,
                                         siginfo_t*           infop,
                                         int                  options,
                                         unsigned int         flags) noexcept {
-    io_uring_prep_rw(IORING_OP_WAITID, sqe, id, nullptr, uring_static_cast(unsigned, idtype), 0);
+    io_uring_prep_rw(IORING_OP_WAITID,
+                     sqe,
+                     uring_static_cast(int, id),
+                     nullptr,
+                     uring_static_cast(unsigned, idtype),
+                     0);
     sqe->waitid_flags = flags;
-    sqe->file_index   = options;
-    sqe->addr2        = (unsigned long) infop;
+    sqe->file_index   = uring_static_cast(__u32, options);
+    sqe->addr2        = uring_static_cast(__u64, infop);
 }
 
 IOURINGINLINE void io_uring_prep_futex_wake(struct io_uring_sqe* sqe,
@@ -2769,7 +2774,7 @@ IOURINGINLINE void io_uring_prep_futex_wake(struct io_uring_sqe* sqe,
                                             uint64_t             mask,
                                             uint32_t             futex_flags,
                                             unsigned int         flags) noexcept {
-    io_uring_prep_rw(IORING_OP_FUTEX_WAKE, sqe, futex_flags, futex, 0, val);
+    io_uring_prep_rw(IORING_OP_FUTEX_WAKE, sqe, uring_static_cast(int, futex_flags), futex, 0, val);
     sqe->futex_flags = flags;
     sqe->addr3       = mask;
 }
@@ -2780,7 +2785,7 @@ IOURINGINLINE void io_uring_prep_futex_wait(struct io_uring_sqe* sqe,
                                             uint64_t             mask,
                                             uint32_t             futex_flags,
                                             unsigned int         flags) noexcept {
-    io_uring_prep_rw(IORING_OP_FUTEX_WAIT, sqe, futex_flags, futex, 0, val);
+    io_uring_prep_rw(IORING_OP_FUTEX_WAIT, sqe, uring_static_cast(int, futex_flags), futex, 0, val);
     sqe->futex_flags = flags;
     sqe->addr3       = mask;
 }
