@@ -2744,11 +2744,16 @@ IOURINGINLINE void io_uring_prep_cmd_sock(struct io_uring_sqe* sqe,
                                           void*                optval,
                                           int                  optlen) noexcept {
     io_uring_prep_rw(IORING_OP_URING_CMD, sqe, fd, nullptr, 0, 0);
-    sqe->optval  = uring_static_cast(__u64, uring_reinterpret_cast(uintptr_t, optval));
+    sqe->optval = uring_static_cast(__u64, uring_reinterpret_cast(uintptr_t, optval));
+#ifdef __cplusplus
+    sqe->opt.optname = uring_static_cast(__u32, optname);
+    sqe->opt.level   = uring_static_cast(__u32, level);
+#else
     sqe->optname = uring_static_cast(__u32, optname);
-    sqe->optlen  = uring_static_cast(__u32, optlen);
-    sqe->cmd_op  = uring_static_cast(__u32, cmd_op);
     sqe->level   = uring_static_cast(__u32, level);
+#endif
+    sqe->optlen = uring_static_cast(__u32, optlen);
+    sqe->cmd_op = uring_static_cast(__u32, cmd_op);
 }
 
 IOURINGINLINE void io_uring_prep_waitid(struct io_uring_sqe* sqe,
@@ -2765,7 +2770,7 @@ IOURINGINLINE void io_uring_prep_waitid(struct io_uring_sqe* sqe,
                      0);
     sqe->waitid_flags = flags;
     sqe->file_index   = uring_static_cast(__u32, options);
-    sqe->addr2        = uring_static_cast(__u64, infop);
+    sqe->addr2        = uring_reinterpret_cast(__u64, infop);
 }
 
 IOURINGINLINE void io_uring_prep_futex_wake(struct io_uring_sqe* sqe,

@@ -58,13 +58,24 @@ struct io_uring_sqe {
         };
 #endif
     };
+
+#ifdef __cplusplus
+    struct opt_type {
+        __u32	level;
+        __u32	optname;
+    };
+#endif
     union {
         __u64 addr; /* pointer to buffer or iovecs */
         __u64 splice_off_in;
+#ifdef __cplusplus
+        opt_type opt;
+#else
         struct {
             __u32	level;
             __u32	optname;
         };
+#endif
     };
     __u32 len; /* buffer size or number of iovecs */
     union {
