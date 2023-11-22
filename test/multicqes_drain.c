@@ -210,11 +210,11 @@ static int test_generic_drain(struct io_uring* ring) {
         goto err;
     }
 
-    sleep(1);
-    // TODO: randomize event triggerring order
-    for (i = 0; i < max_entry; i++) {
-        if (si[i].op != multi && si[i].op != single)
-            continue;
+	sleep(1);
+	// TODO: randomize event triggering order
+	for (i = 0; i < max_entry; i++) {
+		if (si[i].op != multi && si[i].op != single)
+			continue;
 
         if (trigger_event(ring, pipes[i]))
             goto err;
@@ -300,13 +300,13 @@ static int test_simple_drain(struct io_uring* ring) {
     if (trigger_event(ring, pipe2))
         goto err;
 
-    for (i = 0; i < 2; i++) {
-        sqe[i] = io_uring_get_sqe(ring);
-        if (!sqe[i]) {
-            printf("get sqe failed\n");
-            goto err;
-        }
-    }
+	for (i = 0; i < 2; i++) {
+		sqe[i] = io_uring_get_sqe(ring);
+		if (!sqe[i]) {
+			printf("get sqe failed\n");
+			goto err;
+		}
+	}
 
     io_uring_prep_poll_remove(sqe[0], 0);
     sqe[0]->user_data = 2;
@@ -335,19 +335,20 @@ static int test_simple_drain(struct io_uring* ring) {
         io_uring_cqe_seen(ring, cqe);
     }
 
-    close(pipe1[0]);
-    close(pipe1[1]);
-    close(pipe2[0]);
-    close(pipe2[1]);
-    return 0;
+	close(pipe1[0]);
+	close(pipe1[1]);
+	close(pipe2[0]);
+	close(pipe2[1]);
+	return 0;
 err:
     return 1;
 }
 
-static int test(bool defer_taskrun) {
-    struct io_uring ring;
-    int             i, ret;
-    unsigned int    flags = 0;
+static int test(bool defer_taskrun)
+{
+	struct io_uring ring;
+	int i, ret;
+	unsigned int flags = 0;
 
     if (defer_taskrun)
         flags = IORING_SETUP_SINGLE_ISSUER | IORING_SETUP_DEFER_TASKRUN;
@@ -358,13 +359,13 @@ static int test(bool defer_taskrun) {
         return T_EXIT_FAIL;
     }
 
-    for (i = 0; i < 5; i++) {
-        ret = test_simple_drain(&ring);
-        if (ret) {
-            fprintf(stderr, "test_simple_drain failed\n");
-            return T_EXIT_FAIL;
-        }
-    }
+	for (i = 0; i < 5; i++) {
+		ret = test_simple_drain(&ring);
+		if (ret) {
+			fprintf(stderr, "test_simple_drain failed\n");
+			return T_EXIT_FAIL;
+		}
+	}
 
     for (i = 0; i < 5; i++) {
         ret = test_generic_drain(&ring);
@@ -376,14 +377,14 @@ static int test(bool defer_taskrun) {
 
     io_uring_queue_exit(&ring);
 
-    return T_EXIT_PASS;
+	return T_EXIT_PASS;
 }
 
 int main(int argc, char* argv[]) {
     int ret;
 
-    if (argc > 1)
-        return T_EXIT_SKIP;
+	if (argc > 1)
+		return T_EXIT_SKIP;
 
     ret = test(false);
     if (ret != T_EXIT_PASS) {
@@ -391,13 +392,13 @@ int main(int argc, char* argv[]) {
         return ret;
     }
 
-    if (t_probe_defer_taskrun()) {
-        ret = test(true);
-        if (ret != T_EXIT_PASS) {
-            fprintf(stderr, "%s: test(true) failed\n", argv[0]);
-            return ret;
-        }
-    }
+	if (t_probe_defer_taskrun()) {
+		ret = test(true);
+		if (ret != T_EXIT_PASS) {
+			fprintf(stderr, "%s: test(true) failed\n", argv[0]);
+			return ret;
+		}
+	}
 
-    return ret;
+	return ret;
 }

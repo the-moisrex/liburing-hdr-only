@@ -42,13 +42,13 @@ int main(int argc, char* argv[]) {
         return T_EXIT_FAIL;
     }
 
-    /* Check that registrering again will get -EBUSY */
-    ret = io_uring_register_eventfd(&ring, evfd[1]);
-    if (ret != -EBUSY) {
-        fprintf(stderr, "unexpected 2nd register: %d\n", ret);
-        return T_EXIT_FAIL;
-    }
-    close(evfd[1]);
+	/* Check that registering again will get -EBUSY */
+	ret = io_uring_register_eventfd(&ring, evfd[1]);
+	if (ret != -EBUSY) {
+		fprintf(stderr, "unexpected 2nd register: %d\n", ret);
+		return T_EXIT_FAIL;
+	}
+	close(evfd[1]);
 
     ret = io_uring_unregister_eventfd(&ring);
     if (ret) {
