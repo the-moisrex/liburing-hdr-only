@@ -2,36 +2,38 @@
 .\"
 .\" SPDX-License-Identifier: LGPL-2.0-or-later
 .\"
-.TH io_uring_prep_poll_timeout 3 "March 12, 2022" "liburing-2.2" "liburing Manual"
+.TH io_uring_prep_poll_timeout_update 3 "March 12, 2022" "liburing-2.2" "liburing Manual"
 .SH NAME
-io_uring_prep_timeout \- prepare a timeout request
+io_uring_prep_timeout_update \- prepare a request to update an existing timeout
 .SH SYNOPSIS
 .nf
 .B #include <liburing.h>
 .PP
-.BI "void io_uring_prep_timeout(struct io_uring_sqe *" sqe ","
-.BI "                           struct __kernel_timespec *" ts ","
-.BI "                           unsigned " count ","
-.BI "                           unsigned " flags ");"
+.BI "void io_uring_prep_timeout_update(struct io_uring_sqe *" sqe ","
+.BI "                                  struct __kernel_timespec *" ts ","
+.BI "                                  __u64 " user_data ","
+.BI "                                  unsigned " flags ");"
+.PP
+.BI "void io_uring_prep_timeout_remove(struct io_uring_sqe *" sqe ","
+.BI "                                  __u64 " user_data ","
+.BI "                                  unsigned " flags ");"
 .fi
 .SH DESCRIPTION
 .PP
-The
-.BR io_uring_prep_timeout (3)
-function prepares a timeout request. The submission queue entry
+These functions modify or cancel an existing timeout request. The submission
+queue entry
 .I sqe
-is setup to arm a timeout specified by
+is setup to arm a timeout update or removal specified by
+.I user_data
+and with modifier flags given by
+.IR flags .
+Additionally, the update request includes a
 .I ts
-and with a timeout count of
-.I count
-completion entries. The
-.I flags
-argument holds modifier flags for the request.
+structure, which contains new timeout information.
 
-This request type can be used as a timeout waking anyone sleeping
-for events on the CQ ring. The
+For an update request, the
 .I flags
-argument may contain:
+member may contain a bitmask of the following values:
 .TP
 .B IORING_TIMEOUT_ABS
 The value specified in
@@ -51,17 +53,8 @@ Normally a timeout that triggers would return in a
 CQE
 .I res
 value.
-.TP
-.B IORING_TIMEOUT_MULTISHOT
-The request will return multiple timeout completions. The completion flag
-IORING_CQE_F_MORE is set if more timeouts are expected. The value specified in
-.I count
-is the number of repeats. A value of 0 means the timeout is indefinite and can
-only be stopped by a removal request. Available since the 6.4 kernel.
 .PP
-The timeout completion event will trigger if either the specified timeout
-has occurred, or the specified number of events to wait for have been posted
-to the CQ ring.
+The timeout remove command does not currently accept any flags.
 
 .SH RETURN VALUE
 None
@@ -72,8 +65,16 @@ field. On success,
 .B 0
 is returned.
 .TP
-.B -ETIME
-The specified timeout occurred and triggered the completion event.
+.B -ENOENT
+The timeout identified by
+.I user_data
+could not be found. It may be invalid, or triggered before the update or
+removal request was processed.
+.TP
+.B -EALREADY
+The timeout identified by
+.I user_data
+is already firing and cannot be canceled.
 .TP
 .B -EINVAL
 One of the fields set in the SQE was invalid. For example, two clocksources
@@ -82,9 +83,6 @@ where given, or the specified timeout seconds or nanoseconds where < 0.
 .B -EFAULT
 io_uring was unable to access the data specified by
 .IR ts .
-.TP
-.B -ECANCELED
-The timeout was canceled by a removal request.
 .SH NOTES
 As with any request that passes in data in a struct, that data must remain
 valid until the request has been successfully submitted. It need not remain
@@ -98,5 +96,4 @@ flag passed back from
 .SH SEE ALSO
 .BR io_uring_get_sqe (3),
 .BR io_uring_submit (3),
-.BR io_uring_prep_timeout_remove (3),
-.BR io_uring_prep_timeout_update (3)
+.BR io_uring_prep_timeout (3)

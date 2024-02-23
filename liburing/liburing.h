@@ -2,13 +2,6 @@
 #ifndef LIB_URING_HRD_ONLY_H
 #define LIB_URING_HRD_ONLY_H
 
-#ifndef _XOPEN_SOURCE
-#    define _XOPEN_SOURCE 500 /* Required for glibc to expose sigset_t */
-#endif
-
-#ifndef _GNU_SOURCE
-#    define _GNU_SOURCE /* Required for musl to expose cpu_set_t */
-#endif
 
 #define _POSIX_C_SOURCE 200112L
 #define _DEFAULT_SOURCE
@@ -550,6 +543,19 @@ IOURINGINLINE int io_uring_unregister_buf_ring(struct io_uring* ring, int bgid) 
     return do_register(ring, IORING_UNREGISTER_PBUF_RING, &reg, 1);
 }
 
+IOURINGINLINE int io_uring_buf_ring_head(struct io_uring *ring, int buf_group, unsigned *head) noexcept {
+    struct io_uring_buf_status buf_status = {
+        .buf_group	= buf_group,
+    };
+    const int ret = do_register(ring, IORING_REGISTER_PBUF_STATUS, &buf_status, 1);
+    if (ret) {
+        return ret;
+    }
+    *head = buf_status.head;
+    return 0;
+}
+
+
 IOURINGINLINE int io_uring_register_sync_cancel(struct io_uring*                 ring,
                                                 struct io_uring_sync_cancel_reg* reg) noexcept {
     return do_register(ring, IORING_REGISTER_SYNC_CANCEL, reg, 1);
@@ -560,6 +566,20 @@ io_uring_register_file_alloc_range(struct io_uring* ring, unsigned off, unsigned
     struct io_uring_file_index_range range = {.off = off, .len = len, .resv = 0};
 
     return do_register(ring, IORING_REGISTER_FILE_ALLOC_RANGE, &range, 0);
+}
+
+IOURINGINLINE
+int io_uring_register_napi(struct io_uring *ring, struct io_uring_napi *napi) noexcept
+{
+    return internal__sys_io_uring_register(ring->ring_fd,
+                IORING_REGISTER_NAPI, napi, 1);
+}
+
+IOURINGINLINE
+int io_uring_unregister_napi(struct io_uring *ring, struct io_uring_napi *napi) noexcept
+{
+    return internal__sys_io_uring_register(ring->ring_fd,
+                IORING_UNREGISTER_NAPI, napi, 1);
 }
 
 /**
@@ -1390,6 +1410,22 @@ IOURINGINLINE struct io_uring_sqe* internal_io_uring_get_sqe(struct io_uring* ri
 
     return nullptr;
 }
+
+IOURINGINLINE int io_uring_buf_ring_available(struct io_uring *ring,
+                          struct io_uring_buf_ring *br,
+                          unsigned short bgid) noexcept
+{
+    unsigned head;
+
+    const int ret = io_uring_buf_ring_head(ring, bgid, &head);
+    if (ret) {
+        return ret;
+    }
+
+    return br->tail - head;
+}
+
+
 
 #ifdef LIBURING_INTERNAL
 
@@ -2804,6 +2840,21 @@ IOURINGINLINE void io_uring_prep_futex_waitv(struct io_uring_sqe* sqe,
     sqe->futex_flags = flags;
 }
 
+IOURINGINLINE void io_uring_prep_fixed_fd_install(struct io_uring_sqe *sqe,
+						  int fd,
+						  unsigned int flags) noexcept
+{
+	io_uring_prep_rw(IORING_OP_FIXED_FD_INSTALL, sqe, fd, nullptr, 0, 0);
+	sqe->flags = IOSQE_FIXED_FILE;
+	sqe->install_fd_flags = flags;
+}
+
+IOURINGINLINE void io_uring_prep_ftruncate(struct io_uring_sqe *sqe,
+				       int fd, loff_t len) noexcept
+{
+	io_uring_prep_rw(IORING_OP_FTRUNCATE, sqe, fd, 0, 0, len);
+}
+
 /*
  * Returns number of unconsumed (if SQPOLL) or unsubmitted entries exist in
  * the SQ ring
@@ -2959,7 +3010,7 @@ IOURINGINLINE void internal__io_uring_buf_ring_cq_advance(struct io_uring*      
                                                           struct io_uring_buf_ring* br,
                                                           int                       cq_count,
                                                           int                       buf_count) noexcept {
-    br->tail += uring_static_cast(__u16, buf_count);
+    io_uring_buf_ring_advance(br, buf_count);
     io_uring_cq_advance(ring, uring_static_cast(unsigned, cq_count));
 }
 

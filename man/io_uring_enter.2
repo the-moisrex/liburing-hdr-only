@@ -1346,7 +1346,7 @@ linked timeout has the flag set, it's guaranteed to not post a CQE.
 
 The semantics are chosen to accommodate several use cases. First, when all but
 the last request of a normal link without linked timeouts are marked with the
-flag, only one CQE per lin is posted. Additionally, it enables suppression of
+flag, only one CQE per link is posted. Additionally, it enables suppression of
 CQEs in cases where the side effects of a successfully executed operation is
 enough for userspace to know the state of the system. One such example would
 be writing to a synchronisation file.
@@ -1533,9 +1533,9 @@ At least one CQE was dropped even with the
 .B IORING_FEAT_NODROP
 feature, and there are no otherwise available CQEs. This clears the error state
 and so with no other changes the next call to
-.BR io_uring_setup (2)
+.BR io_uring_enter (2)
 will not have this error. This error should be extremely rare and indicates the
-machine is running critically low on memory and. It may be reasonable for the
+machine is running critically low on memory. It may be reasonable for the
 application to terminate running unless it is able to safely handle any CQE
 being lost.
 .TP

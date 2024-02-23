@@ -47,6 +47,7 @@ test_srcs := \
 	b19062a56726.c \
 	b5837bd5311d.c \
 	buf-ring.c \
+	buf-ring-nommap.c \
 	ce593a6c480a.c \
 	close-opath.c \
 	connect.c \
@@ -61,6 +62,7 @@ test_srcs := \
 	d77a67ed5f27.c \
 	defer.c \
 	defer-taskrun.c \
+	defer-tw-timeout.c \
 	double-poll-crash.c \
 	drop-submit.c \
 	eeed8b54e0df.c \
@@ -76,6 +78,7 @@ test_srcs := \
 	fadvise.c \
 	fallocate.c \
 	fc2a85cb02ef.c \
+	fd-install.c \
 	fd-pass.c \
 	file-register.c \
 	files-exit-hang-poll.c \
@@ -137,6 +140,7 @@ test_srcs := \
 	probe.c \
 	read-before-exit.c \
 	read-mshot.c \
+	read-mshot-empty.c \
 	read-write.c \
 	recv-msgall.c \
 	recv-msgall-stream.c \
@@ -148,6 +152,7 @@ test_srcs := \
 	register-restrictions.c \
 	rename.c \
 	ringbuf-read.c \
+	ringbuf-status.c \
 	ring-leak2.c \
 	ring-leak.c \
 	rsrc_tags.c \
@@ -189,6 +194,7 @@ test_srcs := \
 	thread-exit.c \
 	timeout.c \
 	timeout-new.c \
+	truncate.c \
 	tty-write-dpoll.c \
 	unlink.c \
 	version.c \

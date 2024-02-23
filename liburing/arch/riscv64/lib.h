@@ -9,7 +9,6 @@
 #include <errno.h>
 #include <signal.h>
 #include <stdint.h>
-#include <sys/auxv.h>
 #include <sys/mman.h>
 #include <sys/resource.h>
 #include <sys/syscall.h>

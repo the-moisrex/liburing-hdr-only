@@ -1,6 +1,16 @@
 liburing-2.6 release
 
 - Add getsockopt and setsockopt socket commands
+- Add test cases to test/hardlink
+- Man page fixes
+- Add futex support, and test cases
+- Add waitid support, and test cases
+- Add read multishot, and test cases
+- Add support for IORING_SETUP_NO_SQARRAY
+- Use IORING_SETUP_NO_SQARRAY as the default
+- Add support for IORING_OP_FIXED_FD_INSTALL
+- Add io_uring_prep_fixed_fd_install() helper
+- Support for napi busy polling
 
 liburing-2.5 release
 

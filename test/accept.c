@@ -3,8 +3,8 @@
  * Check that IORING_OP_ACCEPT works, and send some data across to verify we
  * didn't get a junk fd.
  */
-#include "../liburing/liburing.h"
 #include "helpers.h"
+#include "liburing.h"
 
 #include <arpa/inet.h>
 #include <assert.h>
@@ -21,6 +21,7 @@
 #include <sys/time.h>
 #include <sys/un.h>
 #include <unistd.h>
+
 #define MAX_FDS           32
 #define NOP_USER_DATA     (1LLU << 50)
 #define INITIAL_USER_DATA 1000
@@ -287,6 +288,9 @@ test_loop(struct io_uring* ring, struct accept_test_args args, int recv_s0, stru
                     multishot ? "Multishot" : "",
                     i,
                     s_fd[i]);
+            goto err;
+        } else if (s_fd[i] == 195 && args.overflow) {
+            fprintf(stderr, "Broken overflow handling\n");
             goto err;
         }
 
