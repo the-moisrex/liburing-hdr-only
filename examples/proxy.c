@@ -11,6 +11,12 @@
  *
  * 	./proxy -m1 -d1 -f1 -r4444 -H 192.168.2.6 -p4445
  *
+ *
+ * Same as above, but utilize multishot send as well with ring provided send
+ * buffers.
+ *
+ * 	./proxy -m1 -d1 -f1 -u1 -U1 -r4444 -H 192.168.2.6 -p4445
+ *
  * Act as a bi-directional proxy, listening on port 8888, and send data back
  * and forth between host and 192.168.2.6 on port 22. Use multishot receive,
  * DEFER_TASKRUN, fixed files, and buffers of size 1500.
@@ -60,7 +66,7 @@ static long page_size;
 static unsigned long event_loops;
 static unsigned long events;
 
-static int mshot = 1;
+static int recv_mshot = 1;
 static int sqpoll;
 static int defer_tw = 1;
 static int is_sink;
@@ -77,16 +83,26 @@ static int wait_batch = 1;
 static int wait_usec = 1000000;
 static int use_msg;
 static int send_ring = -1;
+static int send_mshot;
 static int verbose;
 
 static int nr_bufs = 256;
 static int br_mask;
+
+static unsigned long loop_iter;
+
+#define QUEUE_SIZE	128
 
 struct pending_send {
 	struct list_head list;
 
 	int fd, bid, len;
 	void *data;
+};
+
+struct io_msg {
+	struct msghdr msg;
+	struct iovec iov;
 };
 
 /*
@@ -100,13 +116,16 @@ struct conn_dir {
 	int pending_sends;
 	struct list_head send_list;
 
-	int rcv, rcv_shrt, enobufs;
-	int snd, snd_shrt, snd_busy;
+	int rcv, rcv_shrt, rcv_enobufs, rcv_mshot;
+	int snd, snd_shrt, snd_enobufs, snd_busy, snd_mshot;
 
 	int rearm_recv;
-	int mshot_submit;
+
+	unsigned long loop_iter;
 
 	unsigned long in_bytes, out_bytes;
+
+	struct io_msg io_rcv_msg;
 };
 
 enum {
@@ -143,6 +162,9 @@ struct conn {
 		struct sockaddr_in addr;
 		struct sockaddr_in6 addr6;
 	};
+
+	struct io_msg *msgs;
+	int msg_index;
 };
 
 #define MAX_CONNS	1024
@@ -188,6 +210,8 @@ struct error_handler {
 
 static int recv_error(struct error_handler *err, struct io_uring *ring,
 		      struct io_uring_cqe *cqe);
+static int send_error(struct error_handler *err, struct io_uring *ring,
+		      struct io_uring_cqe *cqe);
 
 static int default_error(struct error_handler *err,
 			 struct io_uring __attribute__((__unused__)) *ring,
@@ -214,7 +238,7 @@ static struct error_handler error_handlers[] = {
 	{ .name = "SOCK",	.error_fn = default_error, },
 	{ .name = "CONNECT",	.error_fn = default_error, },
 	{ .name = "RECV",	.error_fn = recv_error, },
-	{ .name = "SEND",	.error_fn = default_error, },
+	{ .name = "SEND",	.error_fn = send_error, },
 	{ .name = "SHUTDOWN",	.error_fn = NULL, },
 	{ .name = "CANCEL",	.error_fn = NULL, },
 	{ .name = "CLOSE",	.error_fn = NULL, },
@@ -359,14 +383,15 @@ static void __show_stats(struct conn *c)
 		if (!cd->in_bytes && !cd->out_bytes)
 			continue;
 
-		printf("\t%3d: rcv=%u (short=%u), snd=%u (short=%u, busy=%u)\n",
-			i, cd->rcv, cd->rcv_shrt, cd->snd, cd->snd_shrt,
-			cd->snd_busy);
+		printf("\t%3d: rcv=%u (short=%u, enobufs=%d), snd=%u (short=%u,"
+			" busy=%u, enobufs=%d)\n", i, cd->rcv, cd->rcv_shrt,
+			cd->rcv_enobufs, cd->snd, cd->snd_shrt, cd->snd_busy,
+			cd->snd_enobufs);
 		printf("\t   : in_bytes=%lu (Kb %lu), out_bytes=%lu (Kb %lu)\n",
 			cd->in_bytes, cd->in_bytes >> 10,
 			cd->out_bytes, cd->out_bytes >> 10);
-		printf("\t   : mshot_submit=%d, enobufs=%d\n",
-			cd->mshot_submit, cd->enobufs);
+		printf("\t   : mshot_rcv=%d, mshot_snd=%d\n", cd->rcv_mshot,
+			cd->snd_mshot);
 
 	}
 
@@ -451,19 +476,20 @@ static void *get_buf(struct conn *c, int bid)
 
 static void __submit_receive(struct io_uring *ring, struct conn *c, int fd)
 {
+	struct conn_dir *cd = fd_to_conn_dir(c, fd);
 	struct conn_buf_ring *cbr = &c->in_br;
 	struct io_uring_sqe *sqe;
-	struct msghdr msg;
-	struct iovec iov;
+	struct msghdr *msg = &cd->io_rcv_msg.msg;
+	struct iovec *iov = &cd->io_rcv_msg.iov;
 
 	vlog("%d: submit receive fd=%d\n", c->tid, fd);
 
 	if (use_msg) {
-		memset(&msg, 0, sizeof(msg));
-		iov.iov_base = NULL;
-		iov.iov_len = 0;
-		msg.msg_iov = &iov;
-		msg.msg_iovlen = 1;
+		memset(msg, 0, sizeof(*msg));
+		iov->iov_base = NULL;
+		iov->iov_len = 0;
+		msg->msg_iov = iov;
+		msg->msg_iovlen = 1;
 	}
 
 	/*
@@ -477,15 +503,15 @@ static void __submit_receive(struct io_uring *ring, struct conn *c, int fd)
 	 * passing one in with the request.
 	 */
 	sqe = get_sqe(ring);
-	if (mshot) {
-		fd_to_conn_dir(c, fd)->mshot_submit++;
+	if (recv_mshot) {
+		fd_to_conn_dir(c, fd)->rcv_mshot++;
 		if (use_msg)
 			io_uring_prep_recv_multishot(sqe, fd, NULL, 0, 0);
 		else
 			io_uring_prep_recv_multishot(sqe, fd, NULL, 0, 0);
 	} else {
 		if (use_msg)
-			io_uring_prep_recvmsg(sqe, fd, &msg, 0);
+			io_uring_prep_recvmsg(sqe, fd, msg, 0);
 		else
 			io_uring_prep_recv(sqe, fd, NULL, 0, 0);
 	}
@@ -533,7 +559,7 @@ static void handle_enobufs(struct io_uring *ring, struct conn *c,
 
 	vlog("%d: enobufs hit\n", c->tid);
 
-	cd->enobufs++;
+	cd->rcv_enobufs++;
 
 	send_waits = nr_bufs / 2;
 	if (send_ring)
@@ -672,8 +698,7 @@ static void __queue_send(struct io_uring *ring, struct conn *c, int fd,
 {
 	struct conn_dir *cd = fd_to_conn_dir(c, fd);
 	struct io_uring_sqe *sqe;
-	struct iovec iov;
-	struct msghdr msg;
+	struct io_msg *msg;
 	int bgid = 0;
 
 	vlog("%d: send %d to fd %d (%p, bid %d)\n", c->tid, len, fd, data, bid);
@@ -687,18 +712,32 @@ static void __queue_send(struct io_uring *ring, struct conn *c, int fd,
 		bgid = cbr->bgid;
 	}
 
+	cd->pending_sends++;
+
+	/*
+	 * If we're using send multishot, we only need one send submitted
+	 * per loop.
+	 */
+	if (send_mshot && cd->loop_iter == loop_iter)
+		return;
+	cd->loop_iter = loop_iter;
+
 	sqe = get_sqe(ring);
 	if (use_msg) {
-		memset(&msg, 0, sizeof(msg));
-		iov.iov_base = data;
-		iov.iov_len = len;
-		msg.msg_iov = &iov;
-		msg.msg_iovlen = 1;
-		io_uring_prep_sendmsg(sqe, fd, &msg, MSG_WAITALL | MSG_NOSIGNAL);
+		msg = &c->msgs[c->msg_index++];
+		memset(&msg->msg, 0, sizeof(msg->msg));
+		if (send_ring)
+			msg->iov.iov_base = NULL;
+		else
+			msg->iov.iov_base = data;
+		msg->iov.iov_len = len;
+		msg->msg.msg_iov = &msg->iov;
+		msg->msg.msg_iovlen = 1;
+		io_uring_prep_sendmsg(sqe, fd, &msg->msg, MSG_NOSIGNAL);
 	} else {
 		if (send_ring)
 			data = NULL;
-		io_uring_prep_send(sqe, fd, data, len, MSG_WAITALL | MSG_NOSIGNAL);
+		io_uring_prep_send(sqe, fd, data, len, MSG_NOSIGNAL);
 	}
 	encode_userdata(sqe, c, __SEND, bid, fd);
 	if (fixed_files)
@@ -707,11 +746,16 @@ static void __queue_send(struct io_uring *ring, struct conn *c, int fd,
 		sqe->flags |= IOSQE_BUFFER_SELECT;
 		sqe->buf_group = bgid;
 	}
-	cd->pending_sends++;
+	if (send_mshot) {
+		sqe->ioprio |= IORING_RECV_MULTISHOT;
+		cd->snd_mshot++;
+	}
 
 	/* must submit to avoid msg/iov going out-of-scope */
-	if (use_msg)
+	if (use_msg && c->msg_index == QUEUE_SIZE) {
+		c->msg_index = 0;
 		io_uring_submit(ring);
+	}
 }
 
 /*
@@ -813,7 +857,10 @@ static int handle_accept(struct io_uring *ring, struct io_uring_cqe *cqe)
 	c->out_fd = -1;
 	gettimeofday(&c->start_time, NULL);
 
-	open_conns++;
+	if (use_msg) {
+		c->msgs = calloc(QUEUE_SIZE, sizeof(struct io_msg));
+		c->msg_index = 0;
+	}
 
 	printf("New client: id=%d, in=%d\n", c->tid, c->in_fd);
 
@@ -920,6 +967,8 @@ static int handle_connect(struct io_uring *ring, struct io_uring_cqe *cqe)
 {
 	struct conn *c = cqe_to_conn(cqe);
 
+	open_conns++;
+
 	if (bidi)
 		submit_bidi_receive(ring, c);
 	else
@@ -932,7 +981,7 @@ static int __handle_recv(struct io_uring *ring, struct conn *c,
 			 struct io_uring_cqe *cqe, int in_fd, int out_fd)
 {
 	struct conn_dir *cd = fd_to_conn_dir(c, in_fd);
-	int bid, do_recv = !mshot;
+	int bid, do_recv = !recv_mshot;
 
 	/*
 	 * Not having a buffer attached should only happen if we get a zero
@@ -958,7 +1007,7 @@ static int __handle_recv(struct io_uring *ring, struct conn *c,
 	/*
 	 * If multishot terminates, just submit a new one.
 	 */
-	if (mshot && !(cqe->flags & IORING_CQE_F_MORE))
+	if (recv_mshot && !(cqe->flags & IORING_CQE_F_MORE))
 		do_recv = 1;
 
 	bid = cqe->flags >> IORING_CQE_BUFFER_SHIFT;
@@ -1104,6 +1153,19 @@ static int handle_send(struct io_uring *ring, struct io_uring_cqe *cqe)
 	return 0;
 }
 
+static int send_error(struct error_handler *err, struct io_uring *ring,
+		      struct io_uring_cqe *cqe)
+{
+	struct conn *c = cqe_to_conn(cqe);
+	struct conn_dir *cd = fd_to_conn_dir(c, cqe_to_fd(cqe));
+
+	if (cqe->res != -ENOBUFS)
+		return default_error(err, ring, cqe);
+
+	cd->snd_enobufs++;
+	return 0;
+}
+
 /*
  * We don't expect to get here, as we marked it with skipping posting a
  * CQE if it was successful. If it does trigger, than means it fails and
@@ -1153,6 +1215,8 @@ static int handle_close(struct io_uring *ring, struct io_uring_cqe *cqe)
 		__show_stats(c);
 		open_conns--;
 		free_buffer_rings(ring, c);
+		if (use_msg)
+			free(c->msgs);
 	}
 
 	return 0;
@@ -1234,11 +1298,12 @@ static int handle_cqe(struct io_uring *ring, struct io_uring_cqe *cqe)
 static void usage(const char *name)
 {
 	printf("%s:\n", name);
-	printf("\t-m:\t\tUse multishot receive (%d)\n", mshot);
+	printf("\t-m:\t\tUse multishot receive (%d)\n", recv_mshot);
 	printf("\t-d:\t\tUse DEFER_TASKRUN (%d)\n", defer_tw);
 	printf("\t-S:\t\tUse SQPOLL (%d)\n", sqpoll);
 	printf("\t-b:\t\tSend/receive buf size (%d)\n", buf_size);
 	printf("\t-u:\t\tUse provided buffers for send (%d)\n", send_ring);
+	printf("\t-U:\t\tUse send multishot (%d)\n", send_mshot);
 	printf("\t-n:\t\tNumber of provided buffers (pow2) (%d)\n", nr_bufs);
 	printf("\t-w:\t\tNumber of CQEs to wait for each loop (%d)\n", wait_batch);
 	printf("\t-t:\t\tTimeout for waiting on CQEs (usec) (%d)\n", wait_usec);
@@ -1300,6 +1365,7 @@ static int event_loop(struct io_uring *ring, int fd)
 		io_uring_prep_multishot_accept(sqe, fd, NULL, NULL, 0);
 	__encode_userdata(sqe, 0, __ACCEPT, 0, fd);
 
+	active_ts = idle_ts;
 	if (wait_usec > 1000000) {
 		active_ts.tv_sec = wait_usec / 1000000;
 		wait_usec -= active_ts.tv_sec * 1000000;
@@ -1311,7 +1377,7 @@ static int event_loop(struct io_uring *ring, int fd)
 		struct __kernel_timespec *ts = &idle_ts;
 		struct io_uring_cqe *cqe;
 		unsigned int head;
-		int i, to_wait;
+		int ret, i, to_wait;
 
 		/*
 		 * If wait_batch is set higher than 1, then we'll wait on
@@ -1335,7 +1401,9 @@ static int event_loop(struct io_uring *ring, int fd)
 			to_wait = open_conns * wait_batch;
 		}
 
-		io_uring_submit_and_wait_timeout(ring, &cqe, to_wait, ts, NULL);
+		vlog("Submit and wait for %d\n", to_wait);
+		ret = io_uring_submit_and_wait_timeout(ring, &cqe, to_wait, ts, NULL);
+		vlog("Submit and wait: %d\n", ret);
 
 		i = flags = 0;
 		io_uring_for_each_cqe(ring, head, cqe) {
@@ -1344,6 +1412,8 @@ static int event_loop(struct io_uring *ring, int fd)
 			flags |= cqe_to_conn(cqe)->flags;
 			++i;
 		}
+
+		vlog("Handled %d events\n", i);
 
 		/*
 		 * Advance the CQ ring for seen events when we've processed
@@ -1359,6 +1429,7 @@ static int event_loop(struct io_uring *ring, int fd)
 
 		event_loops++;
 		events += i;
+		loop_iter++;
 	}
 
 	return 0;
@@ -1380,10 +1451,10 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	while ((opt = getopt(argc, argv, "m:d:S:s:b:f:H:r:p:n:B:N:T:w:t:M:u:6Vh?")) != -1) {
+	while ((opt = getopt(argc, argv, "m:d:S:s:b:f:H:r:p:n:B:N:T:w:t:M:u:U:6Vh?")) != -1) {
 		switch (opt) {
 		case 'm':
-			mshot = !!atoi(optarg);
+			recv_mshot = !!atoi(optarg);
 			break;
 		case 'S':
 			sqpoll = !!atoi(optarg);
@@ -1399,6 +1470,9 @@ int main(int argc, char *argv[])
 			break;
 		case 'u':
 			send_ring = !!atoi(optarg);
+			break;
+		case 'U':
+			send_mshot = !!atoi(optarg);
 			break;
 		case 'w':
 			wait_batch = atoi(optarg);
@@ -1537,7 +1611,7 @@ int main(int argc, char *argv[])
 	 * that need to be prepared before submit. Normally in a loop we'd
 	 * only need a few, if any, particularly if multishot is used.
 	 */
-	ret = io_uring_queue_init_params(128, &ring, &params);
+	ret = io_uring_queue_init_params(QUEUE_SIZE, &ring, &params);
 	if (ret) {
 		fprintf(stderr, "%s\n", strerror(-ret));
 		return 1;
@@ -1557,6 +1631,11 @@ int main(int argc, char *argv[])
 				"buffers for sends, disabled\n");
 		}
 		send_ring = 0;
+	}
+
+	if (!send_ring && send_mshot) {
+		fprintf(stderr, "Can't use send multishot without send_ring\n");
+		send_mshot = 0;
 	}
 
 	if (fixed_files) {
@@ -1599,13 +1678,14 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	printf("Backend: multishot=%d, sqpoll=%d, defer_tw=%d, fixed_files=%d "
+	printf("Backend: sqpoll=%d, defer_tw=%d, fixed_files=%d "
 		"is_sink=%d, buf_size=%d, nr_bufs=%d, host=%s, send_port=%d "
 		"receive_port=%d, napi=%d, napi_timeout=%d, msg=%d, "
-		"send_buf_ring=%d\n",
-			mshot, sqpoll, defer_tw, fixed_files, is_sink,
+		"recv_shot=%d, send_buf_ring=%d, send_mshot=%d\n",
+			sqpoll, defer_tw, fixed_files, is_sink,
 			buf_size, nr_bufs, host, send_port, receive_port,
-			napi, napi_timeout, use_msg, send_ring);
+			napi, napi_timeout, use_msg, recv_mshot, send_ring,
+			send_mshot);
 
 	return event_loop(&ring, fd);
 }
