@@ -41,6 +41,7 @@ test_srcs := \
 	a4c0b3decb33.c \
 	accept.c \
 	accept-link.c \
+	accept-non-empty.c \
 	accept-reuse.c \
 	accept-test.c \
 	across-fork.c \
@@ -48,6 +49,7 @@ test_srcs := \
 	b5837bd5311d.c \
 	buf-ring.c \
 	buf-ring-nommap.c \
+	buf-ring-put.c \
 	ce593a6c480a.c \
 	close-opath.c \
 	connect.c \
@@ -94,6 +96,8 @@ test_srcs := \
 	fsync.c \
 	futex.c \
 	hardlink.c \
+	ignore-single-mmap.c \
+	init-mem.c \
 	io-cancel.c \
 	iopoll.c \
 	iopoll-leak.c \
@@ -110,6 +114,7 @@ test_srcs := \
 	madvise.c \
 	mkdir.c \
 	msg-ring.c \
+	msg-ring-fd.c \
 	msg-ring-flags.c \
 	msg-ring-overflow.c \
 	multicqes_drain.c \
@@ -158,6 +163,7 @@ test_srcs := \
 	rsrc_tags.c \
 	rw_merge_test.c \
 	self.c \
+	recvsend_bundle.c \
 	send_recv.c \
 	send_recvmsg.c \
 	send-zerocopy.c \
@@ -176,8 +182,8 @@ test_srcs := \
 	splice.c \
 	sq-full.c \
 	sq-full-cpp.cc \
-	sqpoll-cancel-hang.c \
 	sqpoll-disable-exit.c \
+	sqpoll-exec.c \
 	sq-poll-dup.c \
 	sqpoll-exit-hang.c \
 	sq-poll-kthread.c \
@@ -254,6 +260,9 @@ install: $(test_targets) runtests.sh runtests-loop.sh
 	$(INSTALL) -D -m 755 $(test_targets) $(datadir)/liburing-test/
 	$(INSTALL) -D -m 755 runtests.sh  $(datadir)/liburing-test/
 	$(INSTALL) -D -m 755 runtests-loop.sh  $(datadir)/liburing-test/
+
+uninstall:
+	@rm -rf $(datadir)/liburing-test/
 
 clean:
 	@rm -f $(all_targets) helpers.o output/*

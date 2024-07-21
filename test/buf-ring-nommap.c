@@ -41,6 +41,8 @@ int main(int argc, char *argv[])
 	if (posix_memalign(&ring_mem, 16384, 16384))
 		return T_EXIT_FAIL;
 
+	memset(ring_mem, 0, 16384);
+
 	p.flags = IORING_SETUP_NO_MMAP;
 	ret = io_uring_queue_init_mem(1, &ring, &p, ring_mem, 16384);
 	if (ret < 0) {
@@ -71,6 +73,8 @@ int main(int argc, char *argv[])
 	br = mmap(NULL, ring_size, PROT_READ | PROT_WRITE,
 				MAP_SHARED | MAP_POPULATE, ring.ring_fd, off);
 	if (br == MAP_FAILED) {
+		if (errno == ENOMEM)
+			return T_EXIT_SKIP;
 		perror("mmap");
 		return T_EXIT_FAIL;
 	}

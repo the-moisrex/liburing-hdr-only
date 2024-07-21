@@ -543,7 +543,7 @@ IOURINGINLINE int io_uring_unregister_buf_ring(struct io_uring* ring, int bgid) 
     return do_register(ring, IORING_UNREGISTER_PBUF_RING, &reg, 1);
 }
 
-IOURINGINLINE int io_uring_buf_ring_head(struct io_uring *ring, int buf_group, unsigned *head) noexcept {
+IOURINGINLINE int io_uring_buf_ring_head(struct io_uring *ring, int buf_group, uint16_t *head) noexcept {
     struct io_uring_buf_status buf_status = {
         .buf_group	= buf_group,
     };
@@ -571,15 +571,13 @@ io_uring_register_file_alloc_range(struct io_uring* ring, unsigned off, unsigned
 IOURINGINLINE
 int io_uring_register_napi(struct io_uring *ring, struct io_uring_napi *napi) noexcept
 {
-    return internal__sys_io_uring_register(ring->ring_fd,
-                IORING_REGISTER_NAPI, napi, 1);
+	return do_register(ring, IORING_REGISTER_NAPI, napi, 1);
 }
 
 IOURINGINLINE
 int io_uring_unregister_napi(struct io_uring *ring, struct io_uring_napi *napi) noexcept
 {
-    return internal__sys_io_uring_register(ring->ring_fd,
-                IORING_UNREGISTER_NAPI, napi, 1);
+	return do_register(ring, IORING_UNREGISTER_NAPI, napi, 1);
 }
 
 /**
@@ -672,6 +670,8 @@ get_sq_cq_entries(unsigned entries, struct io_uring_params* p, unsigned* sq, uns
     return 0;
 }
 
+#define KRING_SIZE	64
+
 /*
  * Returns negative for error, or number of bytes used in the buffer on success
  */
@@ -682,25 +682,29 @@ IOURINGINLINE int io_uring_alloc_huge(unsigned                entries,
                                       void*                   buf,
                                       size_t                  buf_size) noexcept {
     unsigned long page_size = uring_static_cast(unsigned long, get_page_size());
-    unsigned      sq_entries, cq_entries;
-    size_t        ring_mem, sqes_mem;
-    unsigned long mem_used = 0;
-    void*         ptr;
-    int           ret;
+	unsigned sq_entries, cq_entries;
+	size_t ring_mem, sqes_mem, cqes_mem;
+	unsigned long mem_used = 0;
+	void *ptr;
+	int ret;
 
-    ret = get_sq_cq_entries(entries, p, &sq_entries, &cq_entries);
-    if (ret)
-        return ret;
+	ret = get_sq_cq_entries(entries, p, &sq_entries, &cq_entries);
+	if (ret)
+		return ret;
 
-    sqes_mem = sq_entries * sizeof(struct io_uring_sqe);
-    sqes_mem = (sqes_mem + page_size - 1) & ~(page_size - 1);
-    ring_mem = cq_entries * sizeof(struct io_uring_cqe);
-    if (p->flags & IORING_SETUP_CQE32)
-        ring_mem *= 2;
-    if (!(p->flags & IORING_SETUP_NO_SQARRAY))
-        ring_mem += sq_entries * sizeof(unsigned);
-    mem_used = sqes_mem + ring_mem;
-    mem_used = (mem_used + page_size - 1) & ~(page_size - 1);
+	ring_mem = KRING_SIZE;
+
+	sqes_mem = sq_entries * sizeof(struct io_uring_sqe);
+	sqes_mem = (sqes_mem + page_size - 1) & ~(page_size - 1);
+	if (!(p->flags & IORING_SETUP_NO_SQARRAY))
+		sqes_mem += sq_entries * sizeof(unsigned);
+
+	cqes_mem = cq_entries * sizeof(struct io_uring_cqe);
+	if (p->flags & IORING_SETUP_CQE32)
+		cqes_mem *= 2;
+	ring_mem += sqes_mem + cqes_mem;
+	mem_used = ring_mem;
+	mem_used = (mem_used + page_size - 1) & ~(page_size - 1);
 
     /*
      * A maxed-out number of CQ entries with IORING_SETUP_CQE32 fills a 2MB
@@ -1381,6 +1385,8 @@ IOURINGINLINE int io_uring_wait_cqes_new(struct io_uring*          ring,
     return internal_io_uring_get_cqe(ring, cqe_ptr, &data);
 }
 
+IOURINGINLINE void io_uring_initialize_sqe(struct io_uring_sqe *sqe) noexcept;
+
 /*
  * Return a SQE to fill. Application must later call io_uring_submit()
  * when it's ready to tell the kernel about it. The caller may call this
@@ -1396,7 +1402,7 @@ IOURINGINLINE struct io_uring_sqe* internal_io_uring_get_sqe(struct io_uring* ri
     if (ring->flags & IORING_SETUP_SQE128)
         shift = 1;
     if (!(ring->flags & IORING_SETUP_SQPOLL))
-        head = IO_URING_READ_ONCE(*sq->khead);
+        head = *sq->khead;
     else
         head = io_uring_smp_load_acquire(sq->khead);
 
@@ -1405,6 +1411,7 @@ IOURINGINLINE struct io_uring_sqe* internal_io_uring_get_sqe(struct io_uring* ri
 
         sqe          = &sq->sqes[(sq->sqe_tail & sq->ring_mask) << shift];
         sq->sqe_tail = next;
+		io_uring_initialize_sqe(sqe);
         return sqe;
     }
 
@@ -1415,14 +1422,14 @@ IOURINGINLINE int io_uring_buf_ring_available(struct io_uring *ring,
                           struct io_uring_buf_ring *br,
                           unsigned short bgid) noexcept
 {
-    unsigned head;
+	uint16_t head;
 
     const int ret = io_uring_buf_ring_head(ring, bgid, &head);
     if (ret) {
         return ret;
     }
 
-    return br->tail - head;
+    return uring_static_cast(uint16_t, br->tail - head);
 }
 
 
@@ -1461,22 +1468,18 @@ IOURINGINLINE unsigned internal__io_uring_flush_sq(struct io_uring* ring) noexce
          * Ensure kernel sees the SQE updates before the tail update.
          */
         if (!(ring->flags & IORING_SETUP_SQPOLL))
-            IO_URING_WRITE_ONCE(*sq->ktail, tail);
-        else
-            io_uring_smp_store_release(sq->ktail, tail);
-    }
-    /*
-     * This _may_ look problematic, as we're not supposed to be reading
-     * SQ->head without acquire semantics. When we're in SQPOLL mode, the
-     * kernel submitter could be updating this right now. For non-SQPOLL,
-     * task itself does it, and there's no potential race. But even for
-     * SQPOLL, the load is going to be potentially out-of-date the very
-     * instant it's done, regardless or whether it's done
-     * atomically. Worst case, we're going to be over-estimating what
-     * we can submit. The point is, we need to be able to deal with this
-     * situation regardless of any perceived atomicity.
-     */
-    return tail - *sq->khead;
+			*sq->ktail = tail;
+		else
+			io_uring_smp_store_release(sq->ktail, tail);
+	}
+	/*
+	* This load needs to be atomic, since sq->khead is written concurrently
+	* by the kernel, but it doesn't need to be load_acquire, since the
+	* kernel doesn't store to the submission queue; it advances khead just
+	* to indicate that it's finished reading the submission queue entries
+	* so they're available for us to write to.
+	*/
+	return tail - IO_URING_READ_ONCE(*sq->khead);
 }
 
 /*
@@ -1712,7 +1715,6 @@ IOURINGINLINE size_t npages(size_t size, long page_size) noexcept {
     return uring_static_cast(size_t, internal__fls(uring_static_cast(int, size)));
 }
 
-#define KRING_SIZE 320
 
 IOURINGINLINE size_t rings_size(struct io_uring_params* p,
                                 unsigned                entries,
@@ -1955,6 +1957,19 @@ IOURINGINLINE void internal__io_uring_set_target_fixed_file(struct io_uring_sqe*
     sqe->file_index = file_index + 1;
 }
 
+IOURINGINLINE void io_uring_initialize_sqe(struct io_uring_sqe *sqe) noexcept {
+	sqe->flags = 0;
+	sqe->ioprio = 0;
+	sqe->rw_flags = 0;
+	sqe->buf_index = 0;
+	sqe->personality = 0;
+	sqe->file_index = 0;
+	sqe->addr3 = 0;
+#ifndef __cplusplus
+	sqe->__pad2[0] = 0;
+#endif
+}
+
 IOURINGINLINE void io_uring_prep_rw(int                  op,
                                     struct io_uring_sqe* sqe,
                                     int                  fd,
@@ -1962,20 +1977,10 @@ IOURINGINLINE void io_uring_prep_rw(int                  op,
                                     unsigned             len,
                                     __u64                offset) noexcept {
     sqe->opcode      = uring_static_cast(__u8, op);
-    sqe->flags       = 0;
-    sqe->ioprio      = 0;
-    sqe->fd          = fd;
-    sqe->off         = offset;
+	sqe->fd = fd;
+	sqe->off = offset;
     sqe->addr        = uring_reinterpret_cast(unsigned long, addr);
-    sqe->len         = len;
-    sqe->rw_flags    = 0;
-    sqe->buf_index   = 0;
-    sqe->personality = 0;
-    sqe->file_index  = 0;
-    sqe->addr3       = 0;
-#ifndef __cplusplus
-    sqe->__pad2[0] = 0;
-#endif
+	sqe->len = len;
 }
 
 /*
@@ -2294,7 +2299,6 @@ IOURINGINLINE void io_uring_prep_read_multishot(struct io_uring_sqe* sqe,
                                                 int                  buf_group) noexcept {
     io_uring_prep_rw(IORING_OP_READ_MULTISHOT, sqe, fd, nullptr, nbytes, offset);
     sqe->buf_group = uring_static_cast(__u16, buf_group);
-    sqe->flags |= IOSQE_BUFFER_SELECT;
 }
 
 IOURINGINLINE void io_uring_prep_write(struct io_uring_sqe* sqe,
@@ -2323,21 +2327,43 @@ IOURINGINLINE void io_uring_prep_statx(struct io_uring_sqe* sqe,
 }
 
 IOURINGINLINE void
-io_uring_prep_fadvise(struct io_uring_sqe* sqe, int fd, __u64 offset, off_t len, int advice) noexcept {
-    io_uring_prep_rw(IORING_OP_FADVISE, sqe, fd, nullptr, uring_static_cast(__u32, len), offset);
+io_uring_prep_fadvise(struct io_uring_sqe* sqe, int fd, __u64 offset, __u32 len, int advice) noexcept {
+    io_uring_prep_rw(IORING_OP_FADVISE, sqe, fd, nullptr, len, offset);
     sqe->fadvise_advice = uring_static_cast(__u32, advice);
 }
 
 IOURINGINLINE void
-io_uring_prep_madvise(struct io_uring_sqe* sqe, void* addr, off_t length, int advice) noexcept {
-    io_uring_prep_rw(IORING_OP_MADVISE, sqe, -1, addr, uring_static_cast(__u32, length), 0);
+io_uring_prep_madvise(struct io_uring_sqe* sqe, void* addr, __u32 length, int advice) noexcept {
+    io_uring_prep_rw(IORING_OP_MADVISE, sqe, -1, addr, length, 0);
     sqe->fadvise_advice = uring_static_cast(__u32, advice);
+}
+
+IOURINGINLINE void io_uring_prep_fadvise64(struct io_uring_sqe *sqe, int fd,
+					 __u64 offset, off_t len, int advice) noexcept
+{
+	io_uring_prep_rw(IORING_OP_FADVISE, sqe, fd, nullptr, 0, offset);
+	sqe->addr = len;
+	sqe->fadvise_advice = uring_static_cast(__u32, advice);
+}
+
+IOURINGINLINE void io_uring_prep_madvise64(struct io_uring_sqe *sqe, void *addr,
+					 off_t length, int advice) noexcept
+{
+	io_uring_prep_rw(IORING_OP_MADVISE, sqe, -1, addr, 0, length);
+	sqe->fadvise_advice = uring_static_cast(__u32, advice);
 }
 
 IOURINGINLINE void
 io_uring_prep_send(struct io_uring_sqe* sqe, int sockfd, const void* buf, size_t len, int flags) noexcept {
     io_uring_prep_rw(IORING_OP_SEND, sqe, sockfd, buf, uring_static_cast(__u32, len), 0);
     sqe->msg_flags = uring_static_cast(__u32, flags);
+}
+
+IOURINGINLINE void io_uring_prep_send_bundle(struct io_uring_sqe *sqe,
+					     int sockfd, size_t len, int flags) noexcept
+{
+	io_uring_prep_send(sqe, sockfd, nullptr, len, flags);
+	sqe->ioprio |= IORING_RECVSEND_BUNDLE;
 }
 
 IOURINGINLINE void io_uring_prep_send_set_addr(struct io_uring_sqe*   sqe,
@@ -2860,15 +2886,17 @@ IOURINGINLINE void io_uring_prep_ftruncate(struct io_uring_sqe *sqe,
  * the SQ ring
  */
 IOURINGINLINE unsigned io_uring_sq_ready(const struct io_uring* ring) noexcept {
-    unsigned khead = *ring->sq.khead;
+	unsigned khead;
 
-    /*
-     * Without a barrier, we could miss an update and think the SQ wasn't
-     * ready. We don't need the load acquire for non-SQPOLL since then we
-     * drive updates.
-     */
-    if (ring->flags & IORING_SETUP_SQPOLL)
-        khead = io_uring_smp_load_acquire(ring->sq.khead);
+	/*
+	 * Without a barrier, we could miss an update and think the SQ wasn't
+	 * ready. We don't need the load acquire for non-SQPOLL since then we
+	 * drive updates.
+	 */
+	if (ring->flags & IORING_SETUP_SQPOLL)
+		khead = io_uring_smp_load_acquire(ring->sq.khead);
+	else
+		khead = *ring->sq.khead;
 
     /* always use real head, to avoid losing sync for short submit */
     return ring->sq.sqe_tail - khead;

@@ -2,31 +2,31 @@
 /*
  * Sample program that can act either as a packet sink, where it just receives
  * packets and doesn't do anything with them, or it can act as a proxy where it
- * receives packets and then sends them to a new destination.
+ * receives packets and then sends them to a new destination. The proxy can
+ * be unidirectional (-B0), or bi-direction (-B1).
  * 
  * Examples:
  *
  * Act as a proxy, listening on port 4444, and send data to 192.168.2.6 on port
  * 4445. Use multishot receive, DEFER_TASKRUN, and fixed files
  *
- * 	./proxy -m1 -d1 -f1 -r4444 -H 192.168.2.6 -p4445
+ * 	./proxy -m1 -r4444 -H 192.168.2.6 -p4445
  *
+ * Same as above, but utilize send bundles (-C1, requires -u1 send_ring) as well
+ * with ring provided send buffers, and recv bundles (-c1).
  *
- * Same as above, but utilize multishot send as well with ring provided send
- * buffers.
- *
- * 	./proxy -m1 -d1 -f1 -u1 -U1 -r4444 -H 192.168.2.6 -p4445
+ * 	./proxy -m1 -c1 -u1 -C1 -r4444 -H 192.168.2.6 -p4445
  *
  * Act as a bi-directional proxy, listening on port 8888, and send data back
  * and forth between host and 192.168.2.6 on port 22. Use multishot receive,
  * DEFER_TASKRUN, fixed files, and buffers of size 1500.
  *
- * 	./proxy -m1 -d1 -f1 -B1 -b1500 -r8888 -H 192.168.2.6 -p22
+ * 	./proxy -m1 -B1 -b1500 -r8888 -H 192.168.2.6 -p22
  *
  * Act a sink, listening on port 4445, using multishot receive, DEFER_TASKRUN,
  * and fixed files:
  *
- * 	./proxy -m1 -d1 -s1 -f1 -r4445
+ * 	./proxy -m1 -s1 -r4445
  *
  * Run with -h to see a list of options, and their defaults.
  *
@@ -36,6 +36,7 @@
 #include <fcntl.h>
 #include <stdint.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -43,19 +44,25 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include <sys/mman.h>
+#include <linux/mman.h>
+#include <locale.h>
+#include <assert.h>
+#include <pthread.h>
 #include <liburing.h>
 
 #include "proxy.h"
-#include "list.h"
 #include "helpers.h"
 
 /*
- * Flag the kernel can use to tell us it supports sends with provided buffers.
- * We can use this to eliminate the need to serialize our sends, as each send
- * will pick a buffer in FIFO order if we can use provided buffers.
+ * Will go away once/if bundles are upstreamed and we put the generic
+ * definitions in the kernel header.
  */
-#ifndef IORING_FEAT_SEND_BUFS
-#define IORING_FEAT_SEND_BUFS	(1U << 14)
+#ifndef IORING_RECVSEND_BUNDLE
+#define IORING_RECVSEND_BUNDLE		(1U << 4)
+#endif
+#ifndef IORING_FEAT_SEND_BUF_SELECT
+#define IORING_FEAT_SEND_BUF_SELECT	(1U << 14)
 #endif
 
 static int cur_bgid = 1;
@@ -71,7 +78,7 @@ static int sqpoll;
 static int defer_tw = 1;
 static int is_sink;
 static int fixed_files = 1;
-static char *host = "192.168.2.6";
+static char *host = "192.168.3.2";
 static int send_port = 4445;
 static int receive_port = 4444;
 static int buf_size = 32;
@@ -81,28 +88,46 @@ static int napi;
 static int napi_timeout;
 static int wait_batch = 1;
 static int wait_usec = 1000000;
-static int use_msg;
+static int rcv_msg;
+static int snd_msg;
+static int snd_zc;
 static int send_ring = -1;
-static int send_mshot;
+static int snd_bundle;
+static int rcv_bundle;
+static int use_huge;
+static int ext_stat;
 static int verbose;
 
 static int nr_bufs = 256;
 static int br_mask;
 
-static unsigned long loop_iter;
+static int ring_size = 128;
 
-#define QUEUE_SIZE	128
+static pthread_mutex_t thread_lock;
+static struct timeval last_housekeeping;
 
-struct pending_send {
-	struct list_head list;
-
-	int fd, bid, len;
-	void *data;
+/*
+ * For sendmsg/recvmsg. recvmsg just has a single vec, sendmsg will have
+ * two vecs - one that is currently submitted and being sent, and one that
+ * is being prepared. When a new sendmsg is issued, we'll swap which one we
+ * use. For send, even though we don't pass in the iovec itself, we use the
+ * vec to serialize the sends to avoid reordering.
+ */
+struct msg_vec {
+	struct iovec *iov;
+	/* length of allocated vec */
+	int vec_size;
+	/* length currently being used */
+	int iov_len;
+	/* only for send, current index we're processing */
+	int cur_iov;
 };
 
 struct io_msg {
 	struct msghdr msg;
-	struct iovec iov;
+	struct msg_vec vecs[2];
+	/* current msg_vec being prepared */
+	int vec_index;
 };
 
 /*
@@ -112,28 +137,42 @@ struct io_msg {
  * or receives, not both.
  */
 struct conn_dir {
+	int index;
+
 	int pending_shutdown;
-	int pending_sends;
-	struct list_head send_list;
+	int pending_send;
+	int pending_recv;
+
+	int snd_notif;
+
+	int out_buffers;
 
 	int rcv, rcv_shrt, rcv_enobufs, rcv_mshot;
 	int snd, snd_shrt, snd_enobufs, snd_busy, snd_mshot;
 
-	int rearm_recv;
+	int snd_next_bid;
+	int rcv_next_bid;
 
-	unsigned long loop_iter;
+	int *rcv_bucket;
+	int *snd_bucket;
 
 	unsigned long in_bytes, out_bytes;
 
+	/* only ever have a single recv pending */
 	struct io_msg io_rcv_msg;
+
+	/* one send that is inflight, and one being prepared for the next one */
+	struct io_msg io_snd_msg;
 };
 
 enum {
-	CONN_F_DISCONNECTING	= 1,
-	CONN_F_DISCONNECTED	= 2,
-	CONN_F_PENDING_SHUTDOWN	= 4,
-	CONN_F_STATS_SHOWN	= 8,
-	CONN_F_END_TIME		= 16,
+	CONN_F_STARTED		= 1,
+	CONN_F_DISCONNECTING	= 2,
+	CONN_F_DISCONNECTED	= 4,
+	CONN_F_PENDING_SHUTDOWN	= 8,
+	CONN_F_STATS_SHOWN	= 16,
+	CONN_F_END_TIME		= 32,
+	CONN_F_REAPED		= 64,
 };
 
 /*
@@ -146,7 +185,11 @@ struct conn_buf_ring {
 };
 
 struct conn {
+	struct io_uring ring;
+
+	/* receive side buffer ring, new data arrives here */
 	struct conn_buf_ring in_br;
+	/* if send_ring is used, outgoing data to send */
 	struct conn_buf_ring out_br;
 
 	int tid;
@@ -163,17 +206,21 @@ struct conn {
 		struct sockaddr_in6 addr6;
 	};
 
-	struct io_msg *msgs;
-	int msg_index;
+	pthread_t thread;
+	pthread_barrier_t startup_barrier;
 };
 
 #define MAX_CONNS	1024
 static struct conn conns[MAX_CONNS];
 
-#define vlog(str, ...) do {							\
+#define vlog(str, ...) do {						\
 	if (verbose)							\
 		printf(str, ##__VA_ARGS__);				\
 } while (0)
+
+static int prep_next_send(struct io_uring *ring, struct conn *c,
+			  struct conn_dir *cd, int fd);
+static void *thread_main(void *data);
 
 static struct conn *cqe_to_conn(struct io_uring_cqe *cqe)
 {
@@ -182,9 +229,30 @@ static struct conn *cqe_to_conn(struct io_uring_cqe *cqe)
 	return &conns[ud.op_tid & TID_MASK];
 }
 
-static struct conn_dir *fd_to_conn_dir(struct conn *c, int fd)
+static struct conn_dir *cqe_to_conn_dir(struct conn *c,
+					struct io_uring_cqe *cqe)
 {
+	int fd = cqe_to_fd(cqe);
+
 	return &c->cd[fd != c->in_fd];
+}
+
+static int other_dir_fd(struct conn *c, int fd)
+{
+	if (c->in_fd == fd)
+		return c->out_fd;
+	return c->in_fd;
+}
+
+/* currently active msg_vec */
+static struct msg_vec *msg_vec(struct io_msg *imsg)
+{
+	return &imsg->vecs[imsg->vec_index];
+}
+
+static struct msg_vec *snd_msg_vec(struct conn_dir *cd)
+{
+	return msg_vec(&cd->io_snd_msg);
 }
 
 /*
@@ -197,10 +265,15 @@ enum {
 	__SOCK		= 2,
 	__CONNECT	= 3,
 	__RECV		= 4,
-	__SEND		= 5,
-	__SHUTDOWN	= 6,
-	__CANCEL	= 7,
-	__CLOSE		= 8,
+	__RECVMSG	= 5,
+	__SEND		= 6,
+	__SENDMSG	= 7,
+	__SHUTDOWN	= 8,
+	__CANCEL	= 9,
+	__CLOSE		= 10,
+	__FD_PASS	= 11,
+	__NOP		= 12,
+	__STOP		= 13,
 };
 
 struct error_handler {
@@ -238,10 +311,15 @@ static struct error_handler error_handlers[] = {
 	{ .name = "SOCK",	.error_fn = default_error, },
 	{ .name = "CONNECT",	.error_fn = default_error, },
 	{ .name = "RECV",	.error_fn = recv_error, },
+	{ .name = "RECVMSG",	.error_fn = recv_error, },
 	{ .name = "SEND",	.error_fn = send_error, },
+	{ .name = "SENDMSG",	.error_fn = send_error, },
 	{ .name = "SHUTDOWN",	.error_fn = NULL, },
 	{ .name = "CANCEL",	.error_fn = NULL, },
 	{ .name = "CLOSE",	.error_fn = NULL, },
+	{ .name = "FD_PASS",	.error_fn = default_error, },
+	{ .name = "NOP",	.error_fn = NULL, },
+	{ .name = "STOP",	.error_fn = default_error, },
 };
 
 static void free_buffer_ring(struct io_uring *ring, struct conn_buf_ring *cbr)
@@ -251,7 +329,10 @@ static void free_buffer_ring(struct io_uring *ring, struct conn_buf_ring *cbr)
 
 	io_uring_free_buf_ring(ring, cbr->br, nr_bufs, cbr->bgid);
 	cbr->br = NULL;
-	free(cbr->buf);
+	if (use_huge)
+		munmap(cbr->buf, buf_size * nr_bufs);
+	else
+		free(cbr->buf);
 }
 
 static void free_buffer_rings(struct io_uring *ring, struct conn *c)
@@ -265,7 +346,7 @@ static void free_buffer_rings(struct io_uring *ring, struct conn *c)
  * on receive, for multishot receive we'll wait for half the provided buffers
  * to be returned by pending sends, then re-arm the multishot receive. If
  * this happens too frequently (see enobufs= stat), then the ring size is
- * likely too small. Use -nXX to make it bigger. See handle_enobufs().
+ * likely too small. Use -nXX to make it bigger. See recv_enobufs().
  *
  * The alternative here would be to use the older style provided buffers,
  * where you simply setup a buffer group and use SQEs with
@@ -276,15 +357,24 @@ static int setup_recv_ring(struct io_uring *ring, struct conn *c)
 {
 	struct conn_buf_ring *cbr = &c->in_br;
 	int ret, i;
+	size_t len;
 	void *ptr;
 
-	cbr->buf = NULL;
-
-	if (posix_memalign(&cbr->buf, page_size, buf_size * nr_bufs)) {
-		perror("posix memalign");
-		return 1;
+	len = buf_size * nr_bufs;
+	if (use_huge) {
+		cbr->buf = mmap(NULL, len, PROT_READ|PROT_WRITE,
+				MAP_PRIVATE|MAP_HUGETLB|MAP_HUGE_2MB|MAP_ANONYMOUS,
+				-1, 0);
+		if (cbr->buf == MAP_FAILED) {
+			perror("mmap");
+			return 1;
+		}
+	} else {
+		if (posix_memalign(&cbr->buf, page_size, len)) {
+			perror("posix memalign");
+			return 1;
+		}
 	}
-
 	cbr->br = io_uring_setup_buf_ring(ring, nr_bufs, cbr->bgid, 0, &ret);
 	if (!cbr->br) {
 		fprintf(stderr, "Buffer ring register failed %d\n", ret);
@@ -323,13 +413,41 @@ static int setup_send_ring(struct io_uring *ring, struct conn *c)
 	return 0;
 }
 
+static int setup_send_zc(struct io_uring *ring, struct conn *c)
+{
+	struct iovec *iovs;
+	void *buf;
+	int i, ret;
+
+	if (snd_msg)
+		return 0;
+
+	buf = c->in_br.buf;
+	iovs = calloc(nr_bufs, sizeof(struct iovec));
+	for (i = 0; i < nr_bufs; i++) {
+		iovs[i].iov_base = buf;
+		iovs[i].iov_len = buf_size;
+		buf += buf_size;
+	}
+
+	ret = io_uring_register_buffers(ring, iovs, nr_bufs);
+	if (ret) {
+		fprintf(stderr, "failed registering buffers: %d\n", ret);
+		free(iovs);
+		return ret;
+	}
+	free(iovs);
+	return 0;
+}
+
 /*
- * Setup an input and output buffer ring
+ * Setup an input and output buffer ring.
  */
 static int setup_buffer_rings(struct io_uring *ring, struct conn *c)
 {
 	int ret;
 
+	/* no locking needed on cur_bgid, parent serializes setup */
 	c->in_br.bgid = cur_bgid++;
 	c->out_br.bgid = cur_bgid++;
 	c->out_br.br = NULL;
@@ -337,25 +455,50 @@ static int setup_buffer_rings(struct io_uring *ring, struct conn *c)
 	ret = setup_recv_ring(ring, c);
 	if (ret)
 		return ret;
-	if (is_sink || !send_ring)
+	if (is_sink)
 		return 0;
-
-	ret = setup_send_ring(ring, c);
-	if (ret) {
-		free_buffer_ring(ring, &c->in_br);
-		return ret;
+	if (snd_zc) {
+		ret = setup_send_zc(ring, c);
+		if (ret)
+			return ret;
+	}
+	if (send_ring) {
+		ret = setup_send_ring(ring, c);
+		if (ret) {
+			free_buffer_ring(ring, &c->in_br);
+			return ret;
+		}
 	}
 
 	return 0;
 }
 
+static void show_buckets(struct conn_dir *cd)
+{
+	int i;
+
+	if (!cd->rcv_bucket || !cd->snd_bucket)
+		return;
+
+	printf("\t Packets per recv/send:\n");
+	for (i = 0; i < nr_bufs; i++) {
+		if (!cd->rcv_bucket[i] && !cd->snd_bucket[i])
+			continue;
+		printf("\t bucket(%3d): rcv=%u snd=%u\n", i, cd->rcv_bucket[i],
+							     cd->snd_bucket[i]);
+	}
+}
+
 static void __show_stats(struct conn *c)
 {
 	unsigned long msec, qps;
+	unsigned long bytes, bw;
 	struct conn_dir *cd;
 	int i;
 
-	if (c->flags & CONN_F_STATS_SHOWN)
+	if (c->flags & (CONN_F_STATS_SHOWN | CONN_F_REAPED))
+		return;
+	if (!(c->flags & CONN_F_STARTED))
 		return;
 
 	if (!(c->flags & CONN_F_END_TIME))
@@ -377,11 +520,15 @@ static void __show_stats(struct conn *c)
 	printf("Conn %d/(in_fd=%d, out_fd=%d): qps=%lu, msec=%lu\n", c->tid,
 					c->in_fd, c->out_fd, qps, msec);
 
+	bytes = 0;
 	for (i = 0; i < 2; i++) {
 		cd = &c->cd[i];
 
-		if (!cd->in_bytes && !cd->out_bytes)
+		if (!cd->in_bytes && !cd->out_bytes && !cd->snd && !cd->rcv)
 			continue;
+
+		bytes += cd->in_bytes;
+		bytes += cd->out_bytes;
 
 		printf("\t%3d: rcv=%u (short=%u, enobufs=%d), snd=%u (short=%u,"
 			" busy=%u, enobufs=%d)\n", i, cd->rcv, cd->rcv_shrt,
@@ -392,7 +539,14 @@ static void __show_stats(struct conn *c)
 			cd->out_bytes, cd->out_bytes >> 10);
 		printf("\t   : mshot_rcv=%d, mshot_snd=%d\n", cd->rcv_mshot,
 			cd->snd_mshot);
+		show_buckets(cd);
 
+	}
+	if (msec) {
+		bytes *= 8UL;
+		bw = bytes / 1000;
+		bw /= msec;
+		printf("\tBW=%'luMbit\n", bw);
 	}
 
 	c->flags |= CONN_F_STATS_SHOWN;
@@ -458,39 +612,26 @@ static struct io_uring_sqe *get_sqe(struct io_uring *ring)
 	return sqe;
 }
 
+/*
+ * See __encode_userdata() for how we encode sqe->user_data, which is passed
+ * back as cqe->user_data at completion time.
+ */
 static void encode_userdata(struct io_uring_sqe *sqe, struct conn *c, int op,
 			    int bid, int fd)
 {
 	__encode_userdata(sqe, c->tid, op, bid, fd);
 }
 
-/*
- * Given a bgid/bid, return the buffer associated with it.
- */
-static void *get_buf(struct conn *c, int bid)
+static void __submit_receive(struct io_uring *ring, struct conn *c,
+			     struct conn_dir *cd, int fd)
 {
-	struct conn_buf_ring *cbr = &c->in_br;
-
-	return cbr->buf + bid * buf_size;
-}
-
-static void __submit_receive(struct io_uring *ring, struct conn *c, int fd)
-{
-	struct conn_dir *cd = fd_to_conn_dir(c, fd);
 	struct conn_buf_ring *cbr = &c->in_br;
 	struct io_uring_sqe *sqe;
-	struct msghdr *msg = &cd->io_rcv_msg.msg;
-	struct iovec *iov = &cd->io_rcv_msg.iov;
 
 	vlog("%d: submit receive fd=%d\n", c->tid, fd);
 
-	if (use_msg) {
-		memset(msg, 0, sizeof(*msg));
-		iov->iov_base = NULL;
-		iov->iov_len = 0;
-		msg->msg_iov = iov;
-		msg->msg_iovlen = 1;
-	}
+	assert(!cd->pending_recv);
+	cd->pending_recv = 1;
 
 	/*
 	 * For both recv and multishot receive, we use the ring provided
@@ -503,28 +644,35 @@ static void __submit_receive(struct io_uring *ring, struct conn *c, int fd)
 	 * passing one in with the request.
 	 */
 	sqe = get_sqe(ring);
-	if (recv_mshot) {
-		fd_to_conn_dir(c, fd)->rcv_mshot++;
-		if (use_msg)
-			io_uring_prep_recv_multishot(sqe, fd, NULL, 0, 0);
-		else
-			io_uring_prep_recv_multishot(sqe, fd, NULL, 0, 0);
-	} else {
-		if (use_msg)
-			io_uring_prep_recvmsg(sqe, fd, msg, 0);
-		else
-			io_uring_prep_recv(sqe, fd, NULL, 0, 0);
-	}
+	if (rcv_msg) {
+		struct io_msg *imsg = &cd->io_rcv_msg;
+		struct msghdr *msg = &imsg->msg;
 
+		memset(msg, 0, sizeof(*msg));
+		msg->msg_iov = msg_vec(imsg)->iov;
+		msg->msg_iovlen = msg_vec(imsg)->iov_len;
+
+		if (recv_mshot) {
+			cd->rcv_mshot++;
+			io_uring_prep_recvmsg_multishot(sqe, fd, &imsg->msg, 0);
+		} else {
+			io_uring_prep_recvmsg(sqe, fd, &imsg->msg, 0);
+		}
+	} else {
+		if (recv_mshot) {
+			cd->rcv_mshot++;
+			io_uring_prep_recv_multishot(sqe, fd, NULL, 0, 0);
+		} else {
+			io_uring_prep_recv(sqe, fd, NULL, 0, 0);
+		}
+	}
 	encode_userdata(sqe, c, __RECV, 0, fd);
 	sqe->buf_group = cbr->bgid;
 	sqe->flags |= IOSQE_BUFFER_SELECT;
 	if (fixed_files)
 		sqe->flags |= IOSQE_FIXED_FILE;
-
-	/* must submit to avoid msg/iov going out-of-scope */
-	if (use_msg)
-		io_uring_submit(ring);
+	if (rcv_bundle)
+		sqe->ioprio |= IORING_RECVSEND_BUNDLE;
 }
 
 /*
@@ -532,7 +680,7 @@ static void __submit_receive(struct io_uring *ring, struct conn *c, int fd)
  */
 static void submit_receive(struct io_uring *ring, struct conn *c)
 {
-	__submit_receive(ring, c, c->in_fd);
+	__submit_receive(ring, c, &c->cd[0], c->in_fd);
 }
 
 /*
@@ -540,8 +688,8 @@ static void submit_receive(struct io_uring *ring, struct conn *c)
  */
 static void submit_bidi_receive(struct io_uring *ring, struct conn *c)
 {
-	__submit_receive(ring, c, c->in_fd);
-	__submit_receive(ring, c, c->out_fd);
+	__submit_receive(ring, c, &c->cd[0], c->in_fd);
+	__submit_receive(ring, c, &c->cd[1], c->out_fd);
 }
 
 /*
@@ -552,30 +700,28 @@ static void submit_bidi_receive(struct io_uring *ring, struct conn *c)
  * new receive until we've replenished half of the buffer pool by processing
  * pending sends.
  */
-static void handle_enobufs(struct io_uring *ring, struct conn *c,
-			   struct conn_dir *cd, int fd)
+static void recv_enobufs(struct io_uring *ring, struct conn *c,
+			 struct conn_dir *cd, int fd)
 {
-	int send_waits;
-
 	vlog("%d: enobufs hit\n", c->tid);
 
 	cd->rcv_enobufs++;
 
-	send_waits = nr_bufs / 2;
-	if (send_ring)
-		send_waits = c->cd[0].pending_sends + c->cd[1].pending_sends;
+	/*
+	 * If we're a sink, mark rcv as rearm. If we're not, then mark us as
+	 * needing a rearm for receive and send. The completing send will
+	 * kick the recv rearm.
+	 */
+	if (!is_sink) {
+		int do_recv_arm = 1;
 
-	/* sink has no sends to wait for, no choice but to re-arm */
-	if (is_sink || !send_waits) {
-		__submit_receive(ring, c, fd);
-		return;
+		if (!cd->pending_send)
+			do_recv_arm = !prep_next_send(ring, c, cd, fd);
+		if (do_recv_arm)
+			__submit_receive(ring, c, &c->cd[0], c->in_fd);
+	} else {
+		__submit_receive(ring, c, &c->cd[0], c->in_fd);
 	}
-
-	cd->rearm_recv = send_waits;
-
-	/* really shouldn't use 1 buffer ring... */
-	if (!cd->rearm_recv)
-		cd->rearm_recv = 1;
 }
 
 /*
@@ -609,6 +755,11 @@ static void queue_shutdown_close(struct io_uring *ring, struct conn *c, int fd)
 	encode_userdata(sqe2, c, __CLOSE, 0, fd);
 }
 
+/*
+ * This connection is going away, queue a cancel for any pending recv, for
+ * example, we have pending for this ring. For completeness, we issue a cancel
+ * for any request we have pending for both in_fd and out_fd.
+ */
 static void queue_cancel(struct io_uring *ring, struct conn *c)
 {
 	struct io_uring_sqe *sqe;
@@ -624,8 +775,8 @@ static void queue_cancel(struct io_uring *ring, struct conn *c)
 
 	if (c->out_fd != -1) {
 		sqe = get_sqe(ring);
-		io_uring_prep_cancel_fd(sqe, c->in_fd, flags);
-		encode_userdata(sqe, c, __CANCEL, 0, c->in_fd);
+		io_uring_prep_cancel_fd(sqe, c->out_fd, flags);
+		encode_userdata(sqe, c, __CANCEL, 0, c->out_fd);
 		c->pending_cancels++;
 	}
 
@@ -646,7 +797,7 @@ static bool should_shutdown(struct conn *c)
 	if (is_sink)
 		return true;
 	if (!bidi)
-		return c->cd[0].rcv == c->cd[1].snd;
+		return c->cd[0].in_bytes == c->cd[1].out_bytes;
 
 	for (i = 0; i < 2; i++) {
 		if (c->cd[0].rcv != c->cd[1].snd)
@@ -658,20 +809,31 @@ static bool should_shutdown(struct conn *c)
 	return true;
 }
 
+/*
+ * Close this connection - send a ring message to the connection with intent
+ * to stop. When the client gets the message, it will initiate the stop.
+ */
 static void __close_conn(struct io_uring *ring, struct conn *c)
 {
-	printf("Client %d: queueing shutdown\n", c->tid);
+	struct io_uring_sqe *sqe;
+	uint64_t user_data;
 
-	queue_cancel(ring, c);
+	printf("Client %d: queueing stop\n", c->tid);
+
+	user_data = __raw_encode(c->tid, __STOP, 0, 0);
+	sqe = io_uring_get_sqe(ring);
+	io_uring_prep_msg_ring(sqe, c->ring.ring_fd, 0, user_data, 0);
+	encode_userdata(sqe, c, __NOP, 0, 0);
 	io_uring_submit(ring);
 }
 
 static void close_cd(struct conn *c, struct conn_dir *cd)
 {
-	if (cd->pending_sends)
+	cd->pending_shutdown = 1;
+
+	if (cd->pending_send)
 		return;
 
-	cd->pending_shutdown = 1;
 	if (!(c->flags & CONN_F_PENDING_SHUTDOWN)) {
 		gettimeofday(&c->end_time, NULL);
 		c->flags |= CONN_F_PENDING_SHUTDOWN | CONN_F_END_TIME;
@@ -682,242 +844,137 @@ static void close_cd(struct conn *c, struct conn_dir *cd)
  * We're done with this buffer, add it back to our pool so the kernel is
  * free to use it again.
  */
-static void replenish_buffer(struct conn *c, int bid)
+static int replenish_buffer(struct conn_buf_ring *cbr, int bid, int offset)
+{
+	void *this_buf = cbr->buf + bid * buf_size;
+
+	assert(bid < nr_bufs);
+
+	io_uring_buf_ring_add(cbr->br, this_buf, buf_size, bid, br_mask, offset);
+	return buf_size;
+}
+
+/*
+ * Iterate buffers from '*bid' and with a total size of 'bytes' and add them
+ * back to our receive ring so they can be reused for new receives.
+ */
+static int replenish_buffers(struct conn *c, int *bid, int bytes)
 {
 	struct conn_buf_ring *cbr = &c->in_br;
-	void *this_buf;
+	int nr_packets = 0;
 
-	this_buf = cbr->buf + bid * buf_size;
+	while (bytes) {
+		int this_len = replenish_buffer(cbr, *bid, nr_packets);
 
-	io_uring_buf_ring_add(cbr->br, this_buf, buf_size, bid, br_mask, 0);
-	io_uring_buf_ring_advance(cbr->br, 1);
+		if (this_len > bytes)
+			this_len = bytes;
+		bytes -= this_len;
+
+		*bid = (*bid + 1) & (nr_bufs - 1);
+		nr_packets++;
+	}
+
+	io_uring_buf_ring_advance(cbr->br, nr_packets);
+	return nr_packets;
 }
 
-static void __queue_send(struct io_uring *ring, struct conn *c, int fd,
-			 void *data, int bid, int len)
+static void free_mvec(struct msg_vec *mvec)
 {
-	struct conn_dir *cd = fd_to_conn_dir(c, fd);
-	struct io_uring_sqe *sqe;
-	struct io_msg *msg;
-	int bgid = 0;
+	free(mvec->iov);
+	mvec->iov = NULL;
+}
 
-	vlog("%d: send %d to fd %d (%p, bid %d)\n", c->tid, len, fd, data, bid);
+static void init_mvec(struct msg_vec *mvec)
+{
+	memset(mvec, 0, sizeof(*mvec));
+	mvec->iov = malloc(sizeof(struct iovec));
+	mvec->vec_size = 1;
+}
 
-	/* if using provided buffers for send, add it upfront */
-	if (send_ring) {
-		struct conn_buf_ring *cbr = &c->out_br;
+static void init_msgs(struct conn_dir *cd)
+{
+	memset(&cd->io_snd_msg, 0, sizeof(cd->io_snd_msg));
+	memset(&cd->io_rcv_msg, 0, sizeof(cd->io_rcv_msg));
+	init_mvec(&cd->io_snd_msg.vecs[0]);
+	init_mvec(&cd->io_snd_msg.vecs[1]);
+	init_mvec(&cd->io_rcv_msg.vecs[0]);
+}
 
-		io_uring_buf_ring_add(cbr->br, data, len, bid, br_mask, 0);
-		io_uring_buf_ring_advance(cbr->br, 1);
-		bgid = cbr->bgid;
-	}
-
-	cd->pending_sends++;
-
-	/*
-	 * If we're using send multishot, we only need one send submitted
-	 * per loop.
-	 */
-	if (send_mshot && cd->loop_iter == loop_iter)
-		return;
-	cd->loop_iter = loop_iter;
-
-	sqe = get_sqe(ring);
-	if (use_msg) {
-		msg = &c->msgs[c->msg_index++];
-		memset(&msg->msg, 0, sizeof(msg->msg));
-		if (send_ring)
-			msg->iov.iov_base = NULL;
-		else
-			msg->iov.iov_base = data;
-		msg->iov.iov_len = len;
-		msg->msg.msg_iov = &msg->iov;
-		msg->msg.msg_iovlen = 1;
-		io_uring_prep_sendmsg(sqe, fd, &msg->msg, MSG_NOSIGNAL);
-	} else {
-		if (send_ring)
-			data = NULL;
-		io_uring_prep_send(sqe, fd, data, len, MSG_NOSIGNAL);
-	}
-	encode_userdata(sqe, c, __SEND, bid, fd);
-	if (fixed_files)
-		sqe->flags |= IOSQE_FIXED_FILE;
-	if (send_ring) {
-		sqe->flags |= IOSQE_BUFFER_SELECT;
-		sqe->buf_group = bgid;
-	}
-	if (send_mshot) {
-		sqe->ioprio |= IORING_RECV_MULTISHOT;
-		cd->snd_mshot++;
-	}
-
-	/* must submit to avoid msg/iov going out-of-scope */
-	if (use_msg && c->msg_index == QUEUE_SIZE) {
-		c->msg_index = 0;
-		io_uring_submit(ring);
-	}
+static void free_msgs(struct conn_dir *cd)
+{
+	free_mvec(&cd->io_snd_msg.vecs[0]);
+	free_mvec(&cd->io_snd_msg.vecs[1]);
+	free_mvec(&cd->io_rcv_msg.vecs[0]);
 }
 
 /*
- * Submit any deferred sends (see comment for defer_send()).
+ * Multishot accept completion triggered. If we're acting as a sink, we're
+ * good to go. Just issue a receive for that case. If we're acting as a proxy,
+ * then start opening a socket that we can use to connect to the other end.
  */
-static void submit_deferred_send(struct io_uring *ring, struct conn *c,
-				 struct conn_dir *cd)
-{
-	struct pending_send *ps;
-
-	if (list_empty(&cd->send_list)) {
-		vlog("%d: defer send %p empty\n", c->tid, cd);
-		return;
-	}
-
-	vlog("%d: queueing deferred send %p\n", c->tid, cd);
-
-	ps = list_first_entry(&cd->send_list, struct pending_send, list);
-	list_del(&ps->list);
-	__queue_send(ring, c, ps->fd, ps->data, ps->bid, ps->len);
-	free(ps);
-}
-
-/*
- * We have pending sends on this socket. Normally this is not an issue, but
- * if we don't serialize sends, then we can get into a situation where the
- * following can happen:
- *
- * 1) Submit sendA for socket1
- * 2) socket1 buffer is full, poll is armed for sendA
- * 3) socket1 space frees up
- * 4) Poll triggers retry for sendA
- * 5) Submit sendB for socket1
- * 6) sendB completes
- * 7) sendA is retried
- *
- * Regardless of the outcome of what happens with sendA in step 7 (it completes
- * or it gets deferred because the socket1 buffer is now full again after sendB
- * has been filled), we've now reordered the received data.
- *
- * This isn't a common occurence, but more likely with big buffers. If we never
- * run into out-of-space in the socket, we could easily support having more than
- * one send in-flight at the same time.
- *
- * Something to think about on the kernel side...
- */
-static void defer_send(struct conn *c, struct conn_dir *cd, int bid, int len,
-		       int out_fd)
-{
-	void *data = get_buf(c, bid);
-	struct pending_send *ps;
-
-	vlog("%d: defer send %d to fd %d (%p, bid %d)\n", c->tid, len, out_fd,
-					data, bid);
-	vlog("%d: pending %d, %p\n", c->tid, cd->pending_sends, cd);
-
-	cd->snd_busy++;
-	ps = malloc(sizeof(*ps));
-	ps->fd = out_fd;
-	ps->bid = bid;
-	ps->len = len;
-	ps->data = data;
-	list_add_tail(&ps->list, &cd->send_list);
-}
-
-/*
- * Queue a send based on the data received in this cqe, which came from
- * a completed receive operation.
- */
-static void queue_send(struct io_uring *ring, struct conn *c, int bid, int len,
-		       int out_fd)
-{
-	struct conn_dir *cd = fd_to_conn_dir(c, out_fd);
-
-	/* no need to serialize sends if we use an outgoing buffer ring */
-	if (!send_ring && cd->pending_sends) {
-		defer_send(c, cd, bid, len, out_fd);
-	} else {
-		void *data = get_buf(c, bid);
-
-		__queue_send(ring, c, out_fd, data, bid, len);
-	}
-}
-
 static int handle_accept(struct io_uring *ring, struct io_uring_cqe *cqe)
 {
-	struct io_uring_sqe *sqe;
 	struct conn *c;
-	int domain;
+	int i;
 
 	if (nr_conns == MAX_CONNS) {
 		fprintf(stderr, "max clients reached %d\n", nr_conns);
 		return 1;
 	}
 
+	/* main thread handles this, which is obviously serialized */
 	c = &conns[nr_conns];
 	c->tid = nr_conns++;
-	c->in_fd = cqe->res;
+	c->in_fd = -1;
 	c->out_fd = -1;
-	gettimeofday(&c->start_time, NULL);
 
-	if (use_msg) {
-		c->msgs = calloc(QUEUE_SIZE, sizeof(struct io_msg));
-		c->msg_index = 0;
+	for (i = 0; i < 2; i++) {
+		struct conn_dir *cd = &c->cd[i];
+
+		cd->index = i;
+		cd->snd_next_bid = -1;
+		cd->rcv_next_bid = -1;
+		if (ext_stat) {
+			cd->rcv_bucket = calloc(nr_bufs, sizeof(int));
+			cd->snd_bucket = calloc(nr_bufs, sizeof(int));
+		}
+		init_msgs(cd);
 	}
 
 	printf("New client: id=%d, in=%d\n", c->tid, c->in_fd);
+	gettimeofday(&c->start_time, NULL);
 
-	if (setup_buffer_rings(ring, c))
-		return 1;
-
-	init_list_head(&c->cd[0].send_list);
-	init_list_head(&c->cd[1].send_list);
-
-	if (is_sink) {
-		submit_receive(ring, c);
-		return 0;
-	}
-
-	if (ipv6)
-		domain = AF_INET6;
-	else
-		domain = AF_INET;
+	pthread_barrier_init(&c->startup_barrier, NULL, 2);
+	pthread_create(&c->thread, NULL, thread_main, c);
 
 	/*
-	 * If fixed_files is set, proxy will use fixed files for any
-	 * new file descriptors it instantiates. Fixd files, or fixed
-	 * descriptors, are io_uring private file descriptors. They
-	 * cannot be accessed outside of io_uring. io_uring holds a
-	 * fixed reference to them, which means that we do not need to
-	 * grab per-request references to them. Particularly for
-	 * threaded applications, grabbing and dropping file references
-	 * for each operation can be costly as the file table is shared.
-	 * This generally shows up as fget/fput related overhead in
-	 * any workload profiles.
-	 *
-	 * Fixed descriptors are passed in via the 'fd' field just
-	 * like regular descriptors, and then marked as such by
-	 * setting the IOSQE_FIXED_FILE flag in the sqe->flags field.
-	 * Some helpers do that automatically, like the below, others
-	 * will need it set manually if they don't have a *direct*()
-	 * helper.
-	 *
-	 * For operations that instantiate them, like the opening of
-	 * a direct socket, the application may either ask the kernel
-	 * to find a free one (as is done below), or the application
-	 * may manage the space itself and pass in an index for a
-	 * currently free slot in the table. If the kernel is asked
-	 * to allocate a free direct descriptor, note that io_uring
-	 * does not abide by the POSIX mandated "lowest free must be
-	 * returned". It may return any free descriptor of its
-	 * choosing.
+	 * Wait for thread to have its ring setup, then either assign the fd
+	 * if it's non-fixed, or pass the fixed one
 	 */
-	sqe = get_sqe(ring);
-	if (fixed_files)
-		io_uring_prep_socket_direct_alloc(sqe, domain, SOCK_STREAM, 0, 0);
-	else
-		io_uring_prep_socket(sqe, domain, SOCK_STREAM, 0, 0);
-	encode_userdata(sqe, c, __SOCK, 0, 0);
+	pthread_barrier_wait(&c->startup_barrier);
+	if (!fixed_files) {
+		c->in_fd = cqe->res;
+	} else {
+		struct io_uring_sqe *sqe;
+		uint64_t user_data;
+
+		/*
+		 * Ring has just been setup, we'll use index 0 as the descriptor
+		 * value.
+		 */
+		user_data = __raw_encode(c->tid, __FD_PASS, 0, 0);
+		sqe = io_uring_get_sqe(ring);
+		io_uring_prep_msg_ring_fd(sqe, c->ring.ring_fd, cqe->res, 0,
+						user_data, 0);
+		encode_userdata(sqe, c, __NOP, 0, cqe->res);
+	}
+
 	return 0;
 }
 
+/*
+ * Our socket request completed, issue a connect request to the other end.
+ */
 static int handle_sock(struct io_uring *ring, struct io_uring_cqe *cqe)
 {
 	struct conn *c = cqe_to_conn(cqe);
@@ -963,11 +1020,18 @@ static int handle_sock(struct io_uring *ring, struct io_uring_cqe *cqe)
 	return 0;
 }
 
+/*
+ * Connection to the other end is done, submit a receive to start receiving
+ * data. If we're a bidirectional proxy, issue a receive on both ends. If not,
+ * then just a single recv will do.
+ */
 static int handle_connect(struct io_uring *ring, struct io_uring_cqe *cqe)
 {
 	struct conn *c = cqe_to_conn(cqe);
 
+	pthread_mutex_lock(&thread_lock);
 	open_conns++;
+	pthread_mutex_unlock(&thread_lock);
 
 	if (bidi)
 		submit_bidi_receive(ring, c);
@@ -977,11 +1041,163 @@ static int handle_connect(struct io_uring *ring, struct io_uring_cqe *cqe)
 	return 0;
 }
 
-static int __handle_recv(struct io_uring *ring, struct conn *c,
-			 struct io_uring_cqe *cqe, int in_fd, int out_fd)
+/*
+ * Append new segment to our currently active msg_vec. This will be submitted
+ * as a sendmsg (with all of it), or as separate sends, later. If we're using
+ * send_ring, then we won't hit this path. Instead, outgoing buffers are
+ * added directly to our outgoing send buffer ring.
+ */
+static void send_append_vec(struct conn_dir *cd, void *data, int len)
 {
-	struct conn_dir *cd = fd_to_conn_dir(c, in_fd);
-	int bid, do_recv = !recv_mshot;
+	struct msg_vec *mvec = snd_msg_vec(cd);
+
+	if (mvec->iov_len == mvec->vec_size) {
+		mvec->vec_size <<= 1;
+		mvec->iov = realloc(mvec->iov, mvec->vec_size * sizeof(struct iovec));
+	}
+
+	mvec->iov[mvec->iov_len].iov_base = data;
+	mvec->iov[mvec->iov_len].iov_len = len;
+	mvec->iov_len++;
+}
+
+/*
+ * Queue a send based on the data received in this cqe, which came from
+ * a completed receive operation.
+ */
+static void send_append(struct conn *c, struct conn_dir *cd, void *data,
+			int bid, int len)
+{
+	vlog("%d: send %d (%p, bid %d)\n", c->tid, len, data, bid);
+
+	assert(bid < nr_bufs);
+
+	/* if using provided buffers for send, add it upfront */
+	if (send_ring) {
+		struct conn_buf_ring *cbr = &c->out_br;
+
+		io_uring_buf_ring_add(cbr->br, data, len, bid, br_mask, 0);
+		io_uring_buf_ring_advance(cbr->br, 1);
+	} else {
+		send_append_vec(cd, data, len);
+	}
+}
+
+/*
+ * For non recvmsg && multishot, a zero receive marks the end. For recvmsg
+ * with multishot, we always get the header regardless. Hence a "zero receive"
+ * is the size of the header.
+ */
+static int recv_done_res(int res)
+{
+	if (!res)
+		return 1;
+	if (rcv_msg && recv_mshot && res == sizeof(struct io_uring_recvmsg_out))
+		return 1;
+	return 0;
+}
+
+/*
+ * Any receive that isn't recvmsg with multishot can be handled the same way.
+ * Iterate from '*bid' and 'in_bytes' in total, and append the data to the
+ * outgoing queue.
+ */
+static int recv_bids(struct conn *c, struct conn_dir *cd, int *bid, int in_bytes)
+{
+	struct conn_buf_ring *cbr = &c->out_br;
+	struct conn_buf_ring *in_cbr = &c->in_br;
+	struct io_uring_buf *buf;
+	int nr_packets = 0;
+
+	while (in_bytes) {
+		int this_bytes;
+		void *data;
+
+		buf = &in_cbr->br->bufs[*bid];
+		data = (void *) (unsigned long) buf->addr;
+		this_bytes = buf->len;
+		if (this_bytes > in_bytes)
+			this_bytes = in_bytes;
+
+		in_bytes -= this_bytes;
+
+		if (send_ring)
+			io_uring_buf_ring_add(cbr->br, data, this_bytes, *bid,
+						br_mask, nr_packets);
+		else
+			send_append(c, cd, data, *bid, this_bytes);
+
+		*bid = (*bid + 1) & (nr_bufs - 1);
+		nr_packets++;
+	}
+
+	if (send_ring)
+		io_uring_buf_ring_advance(cbr->br, nr_packets);
+
+	return nr_packets;
+}
+
+/*
+ * Special handling of recvmsg with multishot
+ */
+static int recv_mshot_msg(struct conn *c, struct conn_dir *cd, int *bid,
+			  int in_bytes)
+{
+	struct conn_buf_ring *cbr = &c->out_br;
+	struct conn_buf_ring *in_cbr = &c->in_br;
+	struct io_uring_buf *buf;
+	int nr_packets = 0;
+
+	while (in_bytes) {
+		struct io_uring_recvmsg_out *pdu;
+		int this_bytes;
+		void *data;
+
+		buf = &in_cbr->br->bufs[*bid];
+
+		/*
+		 * multishot recvmsg puts a header in front of the data - we
+		 * have to take that into account for the send setup, and
+		 * adjust the actual data read to not take this metadata into
+		 * account. For this use case, namelen and controllen will not
+		 * be set. If they were, they would need to be factored in too.
+		 */
+		buf->len -= sizeof(struct io_uring_recvmsg_out);
+		in_bytes -= sizeof(struct io_uring_recvmsg_out);
+
+		pdu = (void *) (unsigned long) buf->addr;
+		vlog("pdu namelen %d, controllen %d, payload %d flags %x\n",
+				pdu->namelen, pdu->controllen, pdu->payloadlen,
+				pdu->flags);
+		data = (void *) (pdu + 1);
+
+		this_bytes = pdu->payloadlen;
+		if (this_bytes > in_bytes)
+			this_bytes = in_bytes;
+
+		in_bytes -= this_bytes;
+
+		if (send_ring)
+			io_uring_buf_ring_add(cbr->br, data, this_bytes, *bid,
+						br_mask, nr_packets);
+		else
+			send_append(c, cd, data, *bid, this_bytes);
+
+		*bid = (*bid + 1) & (nr_bufs - 1);
+		nr_packets++;
+	}
+
+	if (send_ring)
+		io_uring_buf_ring_advance(cbr->br, nr_packets);
+
+	return nr_packets;
+}
+
+static int __handle_recv(struct io_uring *ring, struct conn *c,
+			 struct conn_dir *cd, struct io_uring_cqe *cqe)
+{
+	struct conn_dir *ocd = &c->cd[!cd->index];
+	int bid, nr_packets;
 
 	/*
 	 * Not having a buffer attached should only happen if we get a zero
@@ -991,29 +1207,33 @@ static int __handle_recv(struct io_uring *ring, struct conn *c,
 	 * result and not have a buffer attached.
 	 */
 	if (!(cqe->flags & IORING_CQE_F_BUFFER)) {
-		if (!cqe->res) {
-			close_cd(c, cd);
-			return 0;
+		cd->pending_recv = 0;
+
+		if (!recv_done_res(cqe->res)) {
+			fprintf(stderr, "no buffer assigned, res=%d\n", cqe->res);
+			return 1;
 		}
-		fprintf(stderr, "no buffer assigned, res=%d\n", cqe->res);
-		return 1;
+start_close:
+		prep_next_send(ring, c, ocd, other_dir_fd(c, cqe_to_fd(cqe)));
+		close_cd(c, cd);
+		return 0;
 	}
 
-	cd->rcv++;
-
-	if (cqe->res != buf_size)
+	if (cqe->res && cqe->res < buf_size)
 		cd->rcv_shrt++;
-
-	/*
-	 * If multishot terminates, just submit a new one.
-	 */
-	if (recv_mshot && !(cqe->flags & IORING_CQE_F_MORE))
-		do_recv = 1;
 
 	bid = cqe->flags >> IORING_CQE_BUFFER_SHIFT;
 
-	vlog("%d: recv: bid=%d, res=%d\n", c->tid, bid, cqe->res);
+	/*
+	 * BIDI will use the same buffer pool and do receive on both CDs,
+	 * so can't reliably check. TODO.
+	 */
+	if (!bidi && cd->rcv_next_bid != -1 && bid != cd->rcv_next_bid) {
+		fprintf(stderr, "recv bid %d, wanted %d\n", bid, cd->rcv_next_bid);
+		goto start_close;
+	}
 
+	vlog("%d: recv: bid=%d, res=%d, cflags=%x\n", c->tid, bid, cqe->res, cqe->flags);
 	/*
 	 * If we're a sink, we're done here. Just replenish the buffer back
 	 * to the pool. For proxy mode, we will send the data to the other
@@ -1021,102 +1241,282 @@ static int __handle_recv(struct io_uring *ring, struct conn *c,
 	 * it.
 	 */
 	if (is_sink)
-		replenish_buffer(c, bid);
+		nr_packets = replenish_buffers(c, &bid, cqe->res);
+	else if (rcv_msg && recv_mshot)
+		nr_packets = recv_mshot_msg(c, ocd, &bid, cqe->res);
 	else
-		queue_send(ring, c, bid, cqe->res, out_fd);
+		nr_packets = recv_bids(c, ocd, &bid, cqe->res);
 
-	cd->in_bytes += cqe->res;
+	if (cd->rcv_bucket)
+		cd->rcv_bucket[nr_packets]++;
+
+	if (!is_sink) {
+		ocd->out_buffers += nr_packets;
+		assert(ocd->out_buffers <= nr_bufs);
+	}
+
+	cd->rcv++;
+	cd->rcv_next_bid = bid;
 
 	/*
-	 * If we're not doing multishot receive, or if multishot receive
-	 * terminated, we need to submit a new receive request as this one
-	 * has completed. Multishot will stay armed.
+	 * If IORING_CQE_F_MORE isn't set, then this is either a normal recv
+	 * that needs rearming, or it's a multishot that won't post any further
+	 * completions. Setup a new one for these cases.
 	 */
-	if (do_recv)
-		__submit_receive(ring, c, in_fd);
+	if (!(cqe->flags & IORING_CQE_F_MORE)) {
+		cd->pending_recv = 0;
+		if (recv_done_res(cqe->res))
+			goto start_close;
+		if (is_sink)
+			__submit_receive(ring, c, &c->cd[0], c->in_fd);
+	}
 
+	/*
+	 * Submit a send if we won't get anymore notifications from this
+	 * recv, or if we have nr_bufs / 2 queued up. If BIDI mode, send
+	 * every buffer. We assume this is interactive mode, and hence don't
+	 * delay anything.
+	 */
+	if (((!ocd->pending_send && (bidi || (ocd->out_buffers >= nr_bufs / 2))) ||
+	    !(cqe->flags & IORING_CQE_F_MORE)) && !is_sink)
+		prep_next_send(ring, c, ocd, other_dir_fd(c, cqe_to_fd(cqe)));
+
+	if (!recv_done_res(cqe->res))
+		cd->in_bytes += cqe->res;
 	return 0;
 }
 
 static int handle_recv(struct io_uring *ring, struct io_uring_cqe *cqe)
 {
 	struct conn *c = cqe_to_conn(cqe);
-	int fd = cqe_to_fd(cqe);
+	struct conn_dir *cd = cqe_to_conn_dir(c, cqe);
 
-	if (fd == c->in_fd)
-		return __handle_recv(ring, c, cqe, c->in_fd, c->out_fd);
-
-	return __handle_recv(ring, c, cqe, c->out_fd, c->in_fd);
+	return __handle_recv(ring, c, cd, cqe);
 }
 
 static int recv_error(struct error_handler *err, struct io_uring *ring,
 		      struct io_uring_cqe *cqe)
 {
 	struct conn *c = cqe_to_conn(cqe);
-	int in_fd, fd = cqe_to_fd(cqe);
+	struct conn_dir *cd = cqe_to_conn_dir(c, cqe);
+
+	cd->pending_recv = 0;
 
 	if (cqe->res != -ENOBUFS)
 		return default_error(err, ring, cqe);
 
-	if (fd == c->in_fd)
-		in_fd = c->in_fd;
-	else
-		in_fd = c->out_fd;
-
-	handle_enobufs(ring, c, fd_to_conn_dir(c, in_fd), in_fd);
+	recv_enobufs(ring, c, cd, other_dir_fd(c, cqe_to_fd(cqe)));
 	return 0;
 }
 
-/*
- * Check if we have a pending receive resubmit after buffer replenish. If
- * this is the case, ->rearm_recv will be set in the other data direction.
- * If set, decrement it. If we've now hit zero pending replenishes, then
- * resubmit the receive operation.
- */
-static void check_recv_rearm(struct io_uring *ring, struct conn *c,
-			     struct conn_dir *cd, int fd)
+static void submit_send(struct io_uring *ring, struct conn *c,
+			struct conn_dir *cd, int fd, void *data, int len,
+			int bid, int flags)
 {
-	struct conn_dir *ocd;
+	struct io_uring_sqe *sqe;
+	int bgid = c->out_br.bgid;
 
-	if (cd == &c->cd[0])
-		ocd = &c->cd[1];
-	else
-		ocd = &c->cd[0];
-
-	if (!ocd->rearm_recv)
+	if (cd->pending_send)
 		return;
+	cd->pending_send = 1;
 
-	vlog("%d: rearm_recv=%d\n", c->tid, ocd->rearm_recv);
+	flags |= MSG_WAITALL | MSG_NOSIGNAL;
 
-	if (!--ocd->rearm_recv) {
-		int in_fd;
+	sqe = get_sqe(ring);
+	if (snd_msg) {
+		struct io_msg *imsg = &cd->io_snd_msg;
 
-		if (fd == c->in_fd)
-			in_fd = c->out_fd;
-		else
-			in_fd = c->in_fd;
+		if (snd_zc) {
+			io_uring_prep_sendmsg_zc(sqe, fd, &imsg->msg, flags);
+			cd->snd_notif++;
+		} else {
+			io_uring_prep_sendmsg(sqe, fd, &imsg->msg, flags);
+		}
+	} else if (send_ring) {
+		io_uring_prep_send(sqe, fd, NULL, 0, flags);
+	} else if (!snd_zc) {
+		io_uring_prep_send(sqe, fd, data, len, flags);
+	} else {
+		io_uring_prep_send_zc(sqe, fd, data, len, flags, 0);
+		sqe->ioprio |= IORING_RECVSEND_FIXED_BUF;
+		sqe->buf_index = bid;
+		cd->snd_notif++;
+	}
+	encode_userdata(sqe, c, __SEND, bid, fd);
+	if (fixed_files)
+		sqe->flags |= IOSQE_FIXED_FILE;
+	if (send_ring) {
+		sqe->flags |= IOSQE_BUFFER_SELECT;
+		sqe->buf_group = bgid;
+	}
+	if (snd_bundle) {
+		sqe->ioprio |= IORING_RECVSEND_BUNDLE;
+		cd->snd_mshot++;
+	} else if (send_ring)
+		cd->snd_mshot++;
+}
 
-		vlog("%d: arm recv on replenish\n", c->tid);
-		__submit_receive(ring, c, in_fd);
+/*
+ * Prepare the next send request, if we need to. If one is already pending,
+ * or if we're a sink and we don't need to do sends, then there's nothing
+ * to do.
+ *
+ * Return 1 if another send completion is expected, 0 if not.
+ */
+static int prep_next_send(struct io_uring *ring, struct conn *c,
+			   struct conn_dir *cd, int fd)
+{
+	int bid;
+
+	if (cd->pending_send || is_sink)
+		return 0;
+	if (!cd->out_buffers)
+		return 0;
+
+	bid = cd->snd_next_bid;
+	if (bid == -1)
+		bid = 0;
+
+	if (send_ring) {
+		/*
+		 * send_ring mode is easy, there's nothing to do but submit
+		 * our next send request. That will empty the entire outgoing
+		 * queue.
+		 */
+		submit_send(ring, c, cd, fd, NULL, 0, bid, 0);
+		return 1;
+	} else if (snd_msg) {
+		/*
+		 * For sendmsg mode, submit our currently prepared iovec, if
+		 * we have one, and swap our iovecs so that any further
+		 * receives will start preparing that one.
+		 */
+		struct io_msg *imsg = &cd->io_snd_msg;
+
+		if (!msg_vec(imsg)->iov_len)
+			return 0;
+		imsg->msg.msg_iov = msg_vec(imsg)->iov;
+		imsg->msg.msg_iovlen = msg_vec(imsg)->iov_len;
+		msg_vec(imsg)->iov_len = 0;
+		imsg->vec_index = !imsg->vec_index;
+		submit_send(ring, c, cd, fd, NULL, 0, bid, 0);
+		return 1;
+	} else {
+		/*
+		 * send without send_ring - submit the next available vec,
+		 * if any. If this vec is the last one in the current series,
+		 * then swap to the next vec. We flag each send with MSG_MORE,
+		 * unless this is the last part of the current vec.
+		 */
+		struct io_msg *imsg = &cd->io_snd_msg;
+		struct msg_vec *mvec = msg_vec(imsg);
+		int flags = !snd_zc ? MSG_MORE : 0;
+		struct iovec *iov;
+
+		if (mvec->iov_len == mvec->cur_iov)
+			return 0;
+		imsg->msg.msg_iov = msg_vec(imsg)->iov;
+		iov = &mvec->iov[mvec->cur_iov];
+		mvec->cur_iov++;
+		if (mvec->cur_iov == mvec->iov_len) {
+			mvec->iov_len = 0;
+			mvec->cur_iov = 0;
+			imsg->vec_index = !imsg->vec_index;
+			flags = 0;
+		}
+		submit_send(ring, c, cd, fd, iov->iov_base, iov->iov_len, bid, flags);
+		return 1;
 	}
 }
 
-static int handle_send(struct io_uring *ring, struct io_uring_cqe *cqe)
+/*
+ * Handling a send with an outgoing send ring. Get the buffers from the
+ * receive side, and add them to the ingoing buffer ring again.
+ */
+static int handle_send_ring(struct conn *c, struct conn_dir *cd,
+			    int bid, int bytes)
 {
-	struct conn *c = cqe_to_conn(cqe);
-	int fd = cqe_to_fd(cqe);
-	struct conn_dir *cd = fd_to_conn_dir(c, fd);
-	int bid;
+	struct conn_buf_ring *in_cbr = &c->in_br;
+	struct conn_buf_ring *out_cbr = &c->out_br;
+	int i = 0;
 
-	cd->snd++;
-	cd->out_bytes += cqe->res;
+	while (bytes) {
+		struct io_uring_buf *buf = &out_cbr->br->bufs[bid];
+		int this_bytes;
+		void *this_buf;
 
-	if (cqe->res != buf_size)
-		cd->snd_shrt++;
+		this_bytes = buf->len;
+		if (this_bytes > bytes)
+			this_bytes = bytes;
+
+		cd->out_bytes += this_bytes;
+
+		vlog("%d: send: bid=%d, len=%d\n", c->tid, bid, this_bytes);
+
+		this_buf = in_cbr->buf + bid * buf_size;
+		io_uring_buf_ring_add(in_cbr->br, this_buf, buf_size, bid, br_mask, i);
+		/*
+		 * Find the provided buffer that the receive consumed, and
+		 * which we then used for the send, and add it back to the
+		 * pool so it can get picked by another receive. Once the send
+		 * is done, we're done with it.
+		 */
+		bid = (bid + 1) & (nr_bufs - 1);
+		bytes -= this_bytes;
+		i++;
+	}
+	cd->snd_next_bid = bid;
+	io_uring_buf_ring_advance(in_cbr->br, i);
+
+	if (pending_shutdown(c))
+		close_cd(c, cd);
+
+	return i;
+}
+
+/*
+ * sendmsg, or send without a ring. Just add buffers back to the ingoing
+ * ring for receives.
+ */
+static int handle_send_buf(struct conn *c, struct conn_dir *cd, int bid,
+			   int bytes)
+{
+	struct conn_buf_ring *in_cbr = &c->in_br;
+	int i = 0;
+
+	while (bytes) {
+		struct io_uring_buf *buf = &in_cbr->br->bufs[bid];
+		int this_bytes;
+
+		this_bytes = bytes;
+		if (this_bytes > buf->len)
+			this_bytes = buf->len;
+
+		vlog("%d: send: bid=%d, len=%d\n", c->tid, bid, this_bytes);
+
+		cd->out_bytes += this_bytes;
+		/* each recvmsg mshot package has this overhead */
+		if (rcv_msg && recv_mshot)
+			cd->out_bytes += sizeof(struct io_uring_recvmsg_out);
+		replenish_buffer(in_cbr, bid, i);
+		bid = (bid + 1) & (nr_bufs - 1);
+		bytes -= this_bytes;
+		i++;
+	}
+	io_uring_buf_ring_advance(in_cbr->br, i);
+	cd->snd_next_bid = bid;
+	return i;
+}
+
+static int __handle_send(struct io_uring *ring, struct conn *c,
+			 struct conn_dir *cd, struct io_uring_cqe *cqe)
+{
+	struct conn_dir *ocd;
+	int bid, nr_packets;
 
 	if (send_ring) {
 		if (!(cqe->flags & IORING_CQE_F_BUFFER)) {
-			fprintf(stderr, "no buffer in send?!\n");
+			fprintf(stderr, "no buffer in send?! %d\n", cqe->res);
 			return 1;
 		}
 		bid = cqe->flags >> IORING_CQE_BUFFER_SHIFT;
@@ -1124,41 +1524,96 @@ static int handle_send(struct io_uring *ring, struct io_uring_cqe *cqe)
 		bid = cqe_to_bid(cqe);
 	}
 
-	vlog("%d: send: bid=%d, res=%d\n", c->tid, bid, cqe->res);
-
 	/*
-	 * Find the provided buffer that the receive consumed, and
-	 * which we then used for the send, and add it back to the
-	 * pool so it can get picked by another receive. Once the send
-	 * is done, we're done with it.
+	 * CQE notifications only happen with send/sendmsg zerocopy. They
+	 * tell us that the data has been acked, and that hence the buffer
+	 * is now free to reuse. Waiting on an ACK for each packet will slow
+	 * us down tremendously, so do all of our sends and then wait for
+	 * the ACKs to come in. They tend to come in bundles anyway. Once
+	 * all acks are done (cd->snd_notif == 0), then fire off the next
+	 * receive.
 	 */
-	replenish_buffer(c, bid);
+	if (cqe->flags & IORING_CQE_F_NOTIF) {
+		cd->snd_notif--;
+	} else {
+		if (cqe->res && cqe->res < buf_size)
+			cd->snd_shrt++;
 
-	cd->pending_sends--;
+		/*
+		 * BIDI will use the same buffer pool and do sends on both CDs,
+		 * so can't reliably check. TODO.
+		 */
+		if (!bidi && send_ring && cd->snd_next_bid != -1 &&
+		    bid != cd->snd_next_bid) {
+			fprintf(stderr, "send bid %d, wanted %d at %lu\n", bid,
+					cd->snd_next_bid, cd->out_bytes);
+			goto out_close;
+		}
 
-	vlog("%d: pending sends %d\n", c->tid, cd->pending_sends);
+		assert(bid <= nr_bufs);
 
-	if (!cd->pending_sends) {
-		if (!cqe->res)
-			close_cd(c, cd);
+		vlog("send: got %d, %lu\n", cqe->res, cd->out_bytes);
+
+		if (send_ring)
+			nr_packets = handle_send_ring(c, cd, bid, cqe->res);
 		else
-			submit_deferred_send(ring, c, cd);
+			nr_packets = handle_send_buf(c, cd, bid, cqe->res);
+
+		if (cd->snd_bucket)
+			cd->snd_bucket[nr_packets]++;
+
+		cd->out_buffers -= nr_packets;
+		assert(cd->out_buffers >= 0);
+
+		cd->snd++;
 	}
 
-	/*
-	 * Check if we need to re-arm receive after this send has added a
-	 * buffer back into the pool.
-	 */
-	check_recv_rearm(ring, c, cd, fd);
+	if (!(cqe->flags & IORING_CQE_F_MORE)) {
+		int do_recv_arm;
+
+		cd->pending_send = 0;
+
+		/*
+		 * send done - see if the current vec has data to submit, and
+		 * do so if it does. if it doesn't have data yet, nothing to
+		 * do.
+		 */
+		do_recv_arm = !prep_next_send(ring, c, cd, cqe_to_fd(cqe));
+
+		ocd = &c->cd[!cd->index];
+		if (!cd->snd_notif && do_recv_arm && !ocd->pending_recv) {
+			int fd = other_dir_fd(c, cqe_to_fd(cqe));
+
+			__submit_receive(ring, c, ocd, fd);
+		}
+out_close:
+		if (pending_shutdown(c))
+			close_cd(c, cd);
+	}
+
+	vlog("%d: pending sends %d\n", c->tid, cd->pending_send);
 	return 0;
+}
+
+static int handle_send(struct io_uring *ring, struct io_uring_cqe *cqe)
+{
+	struct conn *c = cqe_to_conn(cqe);
+	struct conn_dir *cd = cqe_to_conn_dir(c, cqe);
+
+	return __handle_send(ring, c, cd, cqe);
 }
 
 static int send_error(struct error_handler *err, struct io_uring *ring,
 		      struct io_uring_cqe *cqe)
 {
 	struct conn *c = cqe_to_conn(cqe);
-	struct conn_dir *cd = fd_to_conn_dir(c, cqe_to_fd(cqe));
+	struct conn_dir *cd = cqe_to_conn_dir(c, cqe);
 
+	cd->pending_send = 0;
+
+	/* res can have high bit set */
+	if (cqe->flags & IORING_CQE_F_NOTIF)
+		return handle_send(ring, cqe);
 	if (cqe->res != -ENOBUFS)
 		return default_error(err, ring, cqe);
 
@@ -1203,8 +1658,6 @@ static int handle_close(struct io_uring *ring, struct io_uring_cqe *cqe)
 	struct conn *c = cqe_to_conn(cqe);
 	int fd = cqe_to_fd(cqe);
 
-	c->flags |= CONN_F_DISCONNECTED;
-
 	printf("Closed client: id=%d, in_fd=%d, out_fd=%d\n", c->tid, c->in_fd, c->out_fd);
 	if (fd == c->in_fd)
 		c->in_fd = -1;
@@ -1212,11 +1665,17 @@ static int handle_close(struct io_uring *ring, struct io_uring_cqe *cqe)
 		c->out_fd = -1;
 
 	if (c->in_fd == -1 && c->out_fd == -1) {
+		c->flags |= CONN_F_DISCONNECTED;
+
+		pthread_mutex_lock(&thread_lock);
 		__show_stats(c);
 		open_conns--;
+		pthread_mutex_unlock(&thread_lock);
 		free_buffer_rings(ring, c);
-		if (use_msg)
-			free(c->msgs);
+		free_msgs(&c->cd[0]);
+		free_msgs(&c->cd[1]);
+		free(c->cd[0].rcv_bucket);
+		free(c->cd[0].snd_bucket);
 	}
 
 	return 0;
@@ -1238,6 +1697,82 @@ static int handle_cancel(struct io_uring *ring, struct io_uring_cqe *cqe)
 		io_uring_submit(ring);
 	}
 
+	return 0;
+}
+
+static void open_socket(struct conn *c)
+{
+	if (is_sink) {
+		pthread_mutex_lock(&thread_lock);
+		open_conns++;
+		pthread_mutex_unlock(&thread_lock);
+
+		submit_receive(&c->ring, c);
+	} else {
+		struct io_uring_sqe *sqe;
+		int domain;
+
+		if (ipv6)
+			domain = AF_INET6;
+		else
+			domain = AF_INET;
+
+		/*
+		 * If fixed_files is set, proxy will use fixed files for any new
+		 * file descriptors it instantiates. Fixd files, or fixed
+		 * descriptors, are io_uring private file descriptors. They
+		 * cannot be accessed outside of io_uring. io_uring holds a
+		 * fixed reference to them, which means that we do not need to
+		 * grab per-request references to them. Particularly for
+		 * threaded applications, grabbing and dropping file references
+		 * for each operation can be costly as the file table is shared.
+		 * This generally shows up as fget/fput related overhead in any
+		 * workload profiles.
+		 *
+		 * Fixed descriptors are passed in via the 'fd' field just like
+		 * regular descriptors, and then marked as such by setting the
+		 * IOSQE_FIXED_FILE flag in the sqe->flags field. Some helpers
+		 * do that automatically, like the below, others will need it
+		 * set manually if they don't have a *direct*() helper.
+		 *
+		 * For operations that instantiate them, like the opening of a
+		 * direct socket, the application may either ask the kernel to
+		 * find a free one (as is done below), or the application may
+		 * manage the space itself and pass in an index for a currently
+		 * free slot in the table. If the kernel is asked to allocate a
+		 * free direct descriptor, note that io_uring does not abide by
+		 * the POSIX mandated "lowest free must be returned". It may
+		 * return any free descriptor of its choosing.
+		 */
+		sqe = get_sqe(&c->ring);
+		if (fixed_files)
+			io_uring_prep_socket_direct_alloc(sqe, domain, SOCK_STREAM, 0, 0);
+		else
+			io_uring_prep_socket(sqe, domain, SOCK_STREAM, 0, 0);
+		encode_userdata(sqe, c, __SOCK, 0, 0);
+	}
+}
+
+/*
+ * Start of connection, we got our in descriptor.
+ */
+static int handle_fd_pass(struct io_uring_cqe *cqe)
+{
+	struct conn *c = cqe_to_conn(cqe);
+	int fd = cqe_to_fd(cqe);
+
+	vlog("%d: got fd pass %d\n", c->tid, fd);
+	c->in_fd = fd;
+	open_socket(c);
+	return 0;
+}
+
+static int handle_stop(struct io_uring_cqe *cqe)
+{
+	struct conn *c = cqe_to_conn(cqe);
+
+	printf("Client %d: queueing shutdown\n", c->tid);
+	queue_cancel(&c->ring, c);
 	return 0;
 }
 
@@ -1273,9 +1808,11 @@ static int handle_cqe(struct io_uring *ring, struct io_uring_cqe *cqe)
 		ret = handle_connect(ring, cqe);
 		break;
 	case __RECV:
+	case __RECVMSG:
 		ret = handle_recv(ring, cqe);
 		break;
 	case __SEND:
+	case __SENDMSG:
 		ret = handle_send(ring, cqe);
 		break;
 	case __CANCEL:
@@ -1287,6 +1824,15 @@ static int handle_cqe(struct io_uring *ring, struct io_uring_cqe *cqe)
 	case __CLOSE:
 		ret = handle_close(ring, cqe);
 		break;
+	case __FD_PASS:
+		ret = handle_fd_pass(cqe);
+		break;
+	case __STOP:
+		ret = handle_stop(cqe);
+		break;
+	case __NOP:
+		ret = 0;
+		break;
 	default:
 		fprintf(stderr, "bad user data %lx\n", (long) cqe->user_data);
 		return 1;
@@ -1295,82 +1841,78 @@ static int handle_cqe(struct io_uring *ring, struct io_uring_cqe *cqe)
 	return ret;
 }
 
-static void usage(const char *name)
+static void house_keeping(struct io_uring *ring)
 {
-	printf("%s:\n", name);
-	printf("\t-m:\t\tUse multishot receive (%d)\n", recv_mshot);
-	printf("\t-d:\t\tUse DEFER_TASKRUN (%d)\n", defer_tw);
-	printf("\t-S:\t\tUse SQPOLL (%d)\n", sqpoll);
-	printf("\t-b:\t\tSend/receive buf size (%d)\n", buf_size);
-	printf("\t-u:\t\tUse provided buffers for send (%d)\n", send_ring);
-	printf("\t-U:\t\tUse send multishot (%d)\n", send_mshot);
-	printf("\t-n:\t\tNumber of provided buffers (pow2) (%d)\n", nr_bufs);
-	printf("\t-w:\t\tNumber of CQEs to wait for each loop (%d)\n", wait_batch);
-	printf("\t-t:\t\tTimeout for waiting on CQEs (usec) (%d)\n", wait_usec);
-	printf("\t-s:\t\tAct only as a sink (%d)\n", is_sink);
-	printf("\t-f:\t\tUse only fixed files (%d)\n", fixed_files);
-	printf("\t-B:\t\tUse bi-directional mode (%d)\n", bidi);
-	printf("\t-H:\t\tHost to connect to (%s)\n", host);
-	printf("\t-r:\t\tPort to receive on (%d)\n", receive_port);
-	printf("\t-p:\t\tPort to connect to (%d)\n", send_port);
-	printf("\t-6:\t\tUse IPv6 (%d)\n", ipv6);
-	printf("\t-N:\t\tUse NAPI polling (%d)\n", napi);
-	printf("\t-T:\t\tNAPI timeout (usec) (%d)\n", napi_timeout);
-	printf("\t-M:\t\tUse send/recvmsg (%d)\n", use_msg);
-	printf("\t-V:\t\tIncrease verbosity (%d)\n", verbose);
-}
+	static unsigned long last_bytes;
+	unsigned long bytes, elapsed;
+	struct conn *c;
+	int i, j;
 
-static void check_for_close(struct io_uring *ring)
-{
-	int i;
+	vlog("House keeping entered\n");
 
+	bytes = 0;
 	for (i = 0; i < nr_conns; i++) {
-		struct conn *c = &conns[i];
+		c = &conns[i];
 
-		if (c->flags & (CONN_F_DISCONNECTING | CONN_F_DISCONNECTED))
+		for (j = 0; j < 2; j++) {
+			struct conn_dir *cd = &c->cd[j];
+
+			bytes += cd->in_bytes + cd->out_bytes;
+		}
+		if (c->flags & CONN_F_DISCONNECTED) {
+			vlog("%d: disconnected\n", i);
+
+			if (!(c->flags & CONN_F_REAPED)) {
+				void *ret;
+
+				pthread_join(c->thread, &ret);
+				c->flags |= CONN_F_REAPED;
+			}
 			continue;
+		}
+		if (c->flags & CONN_F_DISCONNECTING)
+			continue;
+
 		if (should_shutdown(c)) {
 			__close_conn(ring, c);
 			c->flags |= CONN_F_DISCONNECTING;
 		}
 	}
+
+	elapsed = mtime_since_now(&last_housekeeping);
+	if (bytes && elapsed >= 900) {
+		unsigned long bw;
+
+		bw = (8 * (bytes - last_bytes) / 1000UL) / elapsed;
+		if (bw) {
+			if (open_conns)
+				printf("Bandwidth (threads=%d): %'luMbit\n", open_conns, bw);
+			gettimeofday(&last_housekeeping, NULL);
+			last_bytes = bytes;
+		}
+	}
 }
 
 /*
- * Main event loop, Submit our multishot accept request, and then just loop
- * around handling incoming events.
+ * Event loop shared between the parent, and the connections. Could be
+ * split in two, as they don't handle the same types of events. For the per
+ * connection loop, 'c' is valid. For the main loop, it's NULL.
  */
-static int event_loop(struct io_uring *ring, int fd)
+static int __event_loop(struct io_uring *ring, struct conn *c)
 {
-	struct __kernel_timespec active_ts, idle_ts = { .tv_sec = 1, };
-	struct io_uring_sqe *sqe;
+	struct __kernel_timespec active_ts, idle_ts;
 	int flags;
 
-	/*
-	 * proxy provides a way to use either multishot receive or not, but
-	 * for accept, we always use multishot. A multishot accept request
-	 * needs only be armed once, and then it'll trigger a completion and
-	 * post a CQE whenever a new connection is accepted. No need to do
-	 * anything else, unless the multishot accept terminates. This happens
-	 * if it encounters an error. Applications should check for
-	 * IORING_CQE_F_MORE in cqe->flags - this tells you if more completions
-	 * are expected from this request or not. Non-multishot never have
-	 * this set, where multishot will always have this set unless an error
-	 * occurs.
-	 */
-	sqe = get_sqe(ring);
-	if (fixed_files)
-		io_uring_prep_multishot_accept_direct(sqe, fd, NULL, NULL, 0);
-	else
-		io_uring_prep_multishot_accept(sqe, fd, NULL, NULL, 0);
-	__encode_userdata(sqe, 0, __ACCEPT, 0, fd);
-
+	idle_ts.tv_sec = 0;
+	idle_ts.tv_nsec = 100000000LL;
 	active_ts = idle_ts;
 	if (wait_usec > 1000000) {
 		active_ts.tv_sec = wait_usec / 1000000;
 		wait_usec -= active_ts.tv_sec * 1000000;
 	}
 	active_ts.tv_nsec = wait_usec * 1000;
+
+	gettimeofday(&last_housekeeping, NULL);
 
 	flags = 0;
 	while (1) {
@@ -1398,11 +1940,17 @@ static int event_loop(struct io_uring *ring, int fd)
 		to_wait = 1;
 		if (open_conns && !flags) {
 			ts = &active_ts;
-			to_wait = open_conns * wait_batch;
+			to_wait = wait_batch;
 		}
 
 		vlog("Submit and wait for %d\n", to_wait);
 		ret = io_uring_submit_and_wait_timeout(ring, &cqe, to_wait, ts, NULL);
+
+		if (*ring->cq.koverflow)
+			printf("overflow %u\n", *ring->cq.koverflow);
+		if (*ring->sq.kflags &  IORING_SQ_CQ_OVERFLOW)
+			printf("saw overflow\n");
+
 		vlog("Submit and wait: %d\n", ret);
 
 		i = flags = 0;
@@ -1422,126 +1970,57 @@ static int event_loop(struct io_uring *ring, int fd)
 		 * that single CQE as seen. However, it's more efficient to
 		 * mark a batch as seen when we're done with that batch.
 		 */
-		if (i)
+		if (i) {
 			io_uring_cq_advance(ring, i);
-		if (!i || (flags & (CONN_F_PENDING_SHUTDOWN)))
-			check_for_close(ring);
+			events += i;
+		}
 
 		event_loops++;
-		events += i;
-		loop_iter++;
+		if (c) {
+			if (c->flags & CONN_F_DISCONNECTED)
+				break;
+		} else {
+			house_keeping(ring);
+		}
 	}
 
 	return 0;
 }
 
 /*
- * Options parsing the ring / net setup
+ * Main event loop, Submit our multishot accept request, and then just loop
+ * around handling incoming connections.
  */
-int main(int argc, char *argv[])
+static int parent_loop(struct io_uring *ring, int fd)
 {
-	struct io_uring ring;
+	struct io_uring_sqe *sqe;
+
+	/*
+	 * proxy provides a way to use either multishot receive or not, but
+	 * for accept, we always use multishot. A multishot accept request
+	 * needs only be armed once, and then it'll trigger a completion and
+	 * post a CQE whenever a new connection is accepted. No need to do
+	 * anything else, unless the multishot accept terminates. This happens
+	 * if it encounters an error. Applications should check for
+	 * IORING_CQE_F_MORE in cqe->flags - this tells you if more completions
+	 * are expected from this request or not. Non-multishot never have
+	 * this set, where multishot will always have this set unless an error
+	 * occurs.
+	 */
+	sqe = get_sqe(ring);
+	if (fixed_files)
+		io_uring_prep_multishot_accept_direct(sqe, fd, NULL, NULL, 0);
+	else
+		io_uring_prep_multishot_accept(sqe, fd, NULL, NULL, 0);
+	__encode_userdata(sqe, 0, __ACCEPT, 0, fd);
+
+	return __event_loop(ring, NULL);
+}
+
+static int init_ring(struct io_uring *ring, int nr_files)
+{
 	struct io_uring_params params;
-	struct sigaction sa = { };
-	int opt, ret, fd;
-
-	page_size = sysconf(_SC_PAGESIZE);
-	if (page_size < 0) {
-		perror("sysconf(_SC_PAGESIZE)");
-		return 1;
-	}
-
-	while ((opt = getopt(argc, argv, "m:d:S:s:b:f:H:r:p:n:B:N:T:w:t:M:u:U:6Vh?")) != -1) {
-		switch (opt) {
-		case 'm':
-			recv_mshot = !!atoi(optarg);
-			break;
-		case 'S':
-			sqpoll = !!atoi(optarg);
-			break;
-		case 'd':
-			defer_tw = !!atoi(optarg);
-			break;
-		case 'b':
-			buf_size = atoi(optarg);
-			break;
-		case 'n':
-			nr_bufs = atoi(optarg);
-			break;
-		case 'u':
-			send_ring = !!atoi(optarg);
-			break;
-		case 'U':
-			send_mshot = !!atoi(optarg);
-			break;
-		case 'w':
-			wait_batch = atoi(optarg);
-			break;
-		case 't':
-			wait_usec = atoi(optarg);
-			break;
-		case 's':
-			is_sink = !!atoi(optarg);
-			break;
-		case 'f':
-			fixed_files = !!atoi(optarg);
-			break;
-		case 'H':
-			host = strdup(optarg);
-			break;
-		case 'r':
-			receive_port = atoi(optarg);
-			break;
-		case 'p':
-			send_port = atoi(optarg);
-			break;
-		case 'B':
-			bidi = !!atoi(optarg);
-			break;
-		case 'N':
-			napi = !!atoi(optarg);
-			break;
-		case 'T':
-			napi_timeout = atoi(optarg);
-			break;
-		case '6':
-			ipv6 = true;
-			break;
-		case 'M':
-			use_msg = !!atoi(optarg);
-			break;
-		case 'V':
-			verbose++;
-			break;
-		case 'h':
-		default:
-			usage(argv[0]);
-			return 1;
-		}
-	}
-
-	if (bidi && is_sink) {
-		fprintf(stderr, "Can't be both bidi proxy and sink\n");
-		return 1;
-	}
-	if (use_msg && sqpoll) {
-		fprintf(stderr, "SQPOLL with msg variants disabled\n");
-		use_msg = 0;
-	}
-
-	br_mask = nr_bufs - 1;
-
-	fd = setup_listening_socket(receive_port, ipv6);
-	if (is_sink)
-		send_port = -1;
-
-	if (fd == -1)
-		return 1;
-
-	atexit(show_stats);
-	sa.sa_handler = sig_int;
-	sa.sa_flags = SA_RESTART;
-	sigaction(SIGINT, &sa, NULL);
+	int ret;
 
 	/*
 	 * By default, set us up with a big CQ ring. Not strictly needed
@@ -1556,7 +2035,18 @@ int main(int argc, char *argv[])
 	memset(&params, 0, sizeof(params));
 	params.flags |= IORING_SETUP_SINGLE_ISSUER | IORING_SETUP_CLAMP;
 	params.flags |= IORING_SETUP_CQSIZE;
-	params.cq_entries = 131072;
+	params.cq_entries = 1024;
+
+	/*
+	 * If use_huge is set, setup the ring with IORING_SETUP_NO_MMAP. This
+	 * means that the application allocates the memory for the ring, and
+	 * the kernel maps it. The alternative is having the kernel allocate
+	 * the memory, and then liburing will mmap it. But we can't really
+	 * support huge pages that way. If this fails, then ensure that the
+	 * system has huge pages set aside upfront.
+	 */
+	if (use_huge)
+		params.flags |= IORING_SETUP_NO_MMAP;
 
 	/*
 	 * DEFER_TASKRUN decouples async event reaping and retrying from
@@ -1611,7 +2101,7 @@ int main(int argc, char *argv[])
 	 * that need to be prepared before submit. Normally in a loop we'd
 	 * only need a few, if any, particularly if multishot is used.
 	 */
-	ret = io_uring_queue_init_params(QUEUE_SIZE, &ring, &params);
+	ret = io_uring_queue_init_params(ring_size, ring, &params);
 	if (ret) {
 		fprintf(stderr, "%s\n", strerror(-ret));
 		return 1;
@@ -1622,7 +2112,7 @@ int main(int argc, char *argv[])
 	 * it or not, default it to on. If it was turned on and the kernel
 	 * doesn't support it, turn it off.
 	 */
-	if (params.features & IORING_FEAT_SEND_BUFS) {
+	if (params.features & IORING_FEAT_SEND_BUF_SELECT) {
 		if (send_ring == -1)
 			send_ring = 1;
 	} else {
@@ -1633,9 +2123,9 @@ int main(int argc, char *argv[])
 		send_ring = 0;
 	}
 
-	if (!send_ring && send_mshot) {
-		fprintf(stderr, "Can't use send multishot without send_ring\n");
-		send_mshot = 0;
+	if (!send_ring && snd_bundle) {
+		fprintf(stderr, "Can't use send bundle without send_ring\n");
+		snd_bundle = 0;
 	}
 
 	if (fixed_files) {
@@ -1643,7 +2133,7 @@ int main(int argc, char *argv[])
 		 * If fixed files are used, we need to allocate a fixed file
 		 * table upfront where new direct descriptors can be managed.
 		 */
-		ret = io_uring_register_files_sparse(&ring, 4096);
+		ret = io_uring_register_files_sparse(ring, nr_files);
 		if (ret) {
 			fprintf(stderr, "file register: %d\n", ret);
 			return 1;
@@ -1656,7 +2146,7 @@ int main(int argc, char *argv[])
 		 * the io_uring_enter(2) system call itself, which is used to
 		 * submit and wait on events.
 		 */
-		ret = io_uring_register_ring_fd(&ring);
+		ret = io_uring_register_ring_fd(ring);
 		if (ret != 1) {
 			fprintf(stderr, "ring register: %d\n", ret);
 			return 1;
@@ -1669,7 +2159,7 @@ int main(int argc, char *argv[])
 			.busy_poll_to = napi_timeout,
 		};
 
-		ret = io_uring_register_napi(&ring, &n);
+		ret = io_uring_register_napi(ring, &n);
 		if (ret) {
 			fprintf(stderr, "io_uring_register_napi: %d\n", ret);
 			if (ret != -EINVAL)
@@ -1678,14 +2168,243 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	printf("Backend: sqpoll=%d, defer_tw=%d, fixed_files=%d "
-		"is_sink=%d, buf_size=%d, nr_bufs=%d, host=%s, send_port=%d "
-		"receive_port=%d, napi=%d, napi_timeout=%d, msg=%d, "
-		"recv_shot=%d, send_buf_ring=%d, send_mshot=%d\n",
+	return 0;
+}
+
+static void *thread_main(void *data)
+{
+	struct conn *c = data;
+	int ret;
+
+	c->flags |= CONN_F_STARTED;
+
+	/* we need a max of 4 descriptors for each client */
+	ret = init_ring(&c->ring, 4);
+	if (ret)
+		goto done;
+
+	if (setup_buffer_rings(&c->ring, c))
+		goto done;
+
+	/*
+	 * If we're using fixed files, then we need to wait for the parent
+	 * to install the c->in_fd into our direct descriptor table. When
+	 * that happens, we'll set things up. If we're not using fixed files,
+	 * we can set up the receive or connect now.
+	 */
+	if (!fixed_files)
+		open_socket(c);
+
+	/* we're ready */
+	pthread_barrier_wait(&c->startup_barrier);
+
+	__event_loop(&c->ring, c);
+done:
+	return NULL;
+}
+
+static void usage(const char *name)
+{
+	printf("%s:\n", name);
+	printf("\t-m:\t\tUse multishot receive (%d)\n", recv_mshot);
+	printf("\t-d:\t\tUse DEFER_TASKRUN (%d)\n", defer_tw);
+	printf("\t-S:\t\tUse SQPOLL (%d)\n", sqpoll);
+	printf("\t-f:\t\tUse only fixed files (%d)\n", fixed_files);
+	printf("\t-a:\t\tUse huge pages for the ring (%d)\n", use_huge);
+	printf("\t-t:\t\tTimeout for waiting on CQEs (usec) (%d)\n", wait_usec);
+	printf("\t-w:\t\tNumber of CQEs to wait for each loop (%d)\n", wait_batch);
+	printf("\t-B:\t\tUse bi-directional mode (%d)\n", bidi);
+	printf("\t-s:\t\tAct only as a sink (%d)\n", is_sink);
+	printf("\t-q:\t\tRing size to use (%d)\n", ring_size);
+	printf("\t-H:\t\tHost to connect to (%s)\n", host);
+	printf("\t-r:\t\tPort to receive on (%d)\n", receive_port);
+	printf("\t-p:\t\tPort to connect to (%d)\n", send_port);
+	printf("\t-6:\t\tUse IPv6 (%d)\n", ipv6);
+	printf("\t-N:\t\tUse NAPI polling (%d)\n", napi);
+	printf("\t-T:\t\tNAPI timeout (usec) (%d)\n", napi_timeout);
+	printf("\t-b:\t\tSend/receive buf size (%d)\n", buf_size);
+	printf("\t-n:\t\tNumber of provided buffers (pow2) (%d)\n", nr_bufs);
+	printf("\t-u:\t\tUse provided buffers for send (%d)\n", send_ring);
+	printf("\t-C:\t\tUse bundles for send (%d)\n", snd_bundle);
+	printf("\t-z:\t\tUse zerocopy send (%d)\n", snd_zc);
+	printf("\t-c:\t\tUse bundles for recv (%d)\n", snd_bundle);
+	printf("\t-M:\t\tUse sendmsg (%d)\n", snd_msg);
+	printf("\t-M:\t\tUse recvmsg (%d)\n", rcv_msg);
+	printf("\t-x:\t\tShow extended stats (%d)\n", ext_stat);
+	printf("\t-V:\t\tIncrease verbosity (%d)\n", verbose);
+}
+
+/*
+ * Options parsing the ring / net setup
+ */
+int main(int argc, char *argv[])
+{
+	struct io_uring ring;
+	struct sigaction sa = { };
+	const char *optstring;
+	int opt, ret, fd;
+
+	setlocale(LC_NUMERIC, "en_US");
+
+	page_size = sysconf(_SC_PAGESIZE);
+	if (page_size < 0) {
+		perror("sysconf(_SC_PAGESIZE)");
+		return 1;
+	}
+
+	pthread_mutex_init(&thread_lock, NULL);
+
+	optstring = "m:d:S:s:b:f:H:r:p:n:B:N:T:w:t:M:R:u:c:C:q:a:x:z:6Vh?";
+	while ((opt = getopt(argc, argv, optstring)) != -1) {
+		switch (opt) {
+		case 'm':
+			recv_mshot = !!atoi(optarg);
+			break;
+		case 'S':
+			sqpoll = !!atoi(optarg);
+			break;
+		case 'd':
+			defer_tw = !!atoi(optarg);
+			break;
+		case 'b':
+			buf_size = atoi(optarg);
+			break;
+		case 'n':
+			nr_bufs = atoi(optarg);
+			break;
+		case 'u':
+			send_ring = !!atoi(optarg);
+			break;
+		case 'c':
+			rcv_bundle = !!atoi(optarg);
+			break;
+		case 'C':
+			snd_bundle = !!atoi(optarg);
+			break;
+		case 'w':
+			wait_batch = atoi(optarg);
+			break;
+		case 't':
+			wait_usec = atoi(optarg);
+			break;
+		case 's':
+			is_sink = !!atoi(optarg);
+			break;
+		case 'f':
+			fixed_files = !!atoi(optarg);
+			break;
+		case 'H':
+			host = strdup(optarg);
+			break;
+		case 'r':
+			receive_port = atoi(optarg);
+			break;
+		case 'p':
+			send_port = atoi(optarg);
+			break;
+		case 'B':
+			bidi = !!atoi(optarg);
+			break;
+		case 'N':
+			napi = !!atoi(optarg);
+			break;
+		case 'T':
+			napi_timeout = atoi(optarg);
+			break;
+		case '6':
+			ipv6 = true;
+			break;
+		case 'M':
+			snd_msg = !!atoi(optarg);
+			break;
+		case 'z':
+			snd_zc = !!atoi(optarg);
+			break;
+		case 'R':
+			rcv_msg = !!atoi(optarg);
+			break;
+		case 'q':
+			ring_size = atoi(optarg);
+			break;
+		case 'a':
+			use_huge = !!atoi(optarg);
+			break;
+		case 'x':
+			ext_stat = !!atoi(optarg);
+			break;
+		case 'V':
+			verbose++;
+			break;
+		case 'h':
+		default:
+			usage(argv[0]);
+			return 1;
+		}
+	}
+
+	if (bidi && is_sink) {
+		fprintf(stderr, "Can't be both bidi proxy and sink\n");
+		return 1;
+	}
+	if (snd_msg && sqpoll) {
+		fprintf(stderr, "SQPOLL with msg variants disabled\n");
+		snd_msg = 0;
+	}
+	if (rcv_msg && rcv_bundle) {
+		fprintf(stderr, "Can't use bundles with recvmsg\n");
+		rcv_msg = 0;
+	}
+	if (snd_msg && snd_bundle) {
+		fprintf(stderr, "Can't use bundles with sendmsg\n");
+		snd_msg = 0;
+	}
+	if (snd_msg && send_ring) {
+		fprintf(stderr, "Can't use send ring sendmsg\n");
+		snd_msg = 0;
+	}
+	if (snd_zc && (send_ring || snd_bundle)) {
+		fprintf(stderr, "Can't use send zc with bundles or ring\n");
+		send_ring = snd_bundle = 0;
+	}
+	/*
+	 * For recvmsg w/multishot, we waste some data at the head of the
+	 * packet every time. Adjust the buffer size to account for that,
+	 * so we're still handing 'buf_size' actual payload of data.
+	 */
+	if (rcv_msg && recv_mshot) {
+		fprintf(stderr, "Adjusted buf size for recvmsg w/multishot\n");
+		buf_size += sizeof(struct io_uring_recvmsg_out);
+	}
+
+	br_mask = nr_bufs - 1;
+
+	fd = setup_listening_socket(receive_port, ipv6);
+	if (is_sink)
+		send_port = -1;
+
+	if (fd == -1)
+		return 1;
+
+	atexit(show_stats);
+	sa.sa_handler = sig_int;
+	sa.sa_flags = SA_RESTART;
+	sigaction(SIGINT, &sa, NULL);
+
+	ret = init_ring(&ring, MAX_CONNS * 3);
+	if (ret)
+		return ret;
+
+	printf("Backend: sqpoll=%d, defer_tw=%d, fixed_files=%d, "
+		"is_sink=%d, buf_size=%d, nr_bufs=%d, host=%s, send_port=%d, "
+		"receive_port=%d, napi=%d, napi_timeout=%d, huge_page=%d\n",
 			sqpoll, defer_tw, fixed_files, is_sink,
 			buf_size, nr_bufs, host, send_port, receive_port,
-			napi, napi_timeout, use_msg, recv_mshot, send_ring,
-			send_mshot);
+			napi, napi_timeout, use_huge);
+	printf(" recv options: recvmsg=%d, recv_mshot=%d, recv_bundle=%d\n",
+			rcv_msg, recv_mshot, rcv_bundle);
+	printf(" send options: sendmsg=%d, send_ring=%d, send_bundle=%d, "
+		"send_zerocopy=%d\n", snd_msg, send_ring, snd_bundle,
+			snd_zc);
 
-	return event_loop(&ring, fd);
+	return parent_loop(&ring, fd);
 }

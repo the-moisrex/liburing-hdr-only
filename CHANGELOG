@@ -1,3 +1,15 @@
+liburing-2.7 release
+
+- Man page updates
+- Sync with kernel 6.10
+	- send/recv bundle support
+	- accept nowait and CQE_F_MORE
+- Add and update test cases
+- Fix io_uring_queue_init_mem() returning a value that was too small,
+  potentially causing memory corruption in userspace by overwriting
+  64 bytes beyond the returned value. Also add test case for that.
+- Add 64-bit length variants of io_uring_prep_{m,f}advise()
+
 liburing-2.6 release
 
 - Add getsockopt and setsockopt socket commands
@@ -11,6 +23,9 @@ liburing-2.6 release
 - Add support for IORING_OP_FIXED_FD_INSTALL
 - Add io_uring_prep_fixed_fd_install() helper
 - Support for napi busy polling
+- Improve/add test cases
+- Man page fixes
+- Add sample 'proxy' example
 
 liburing-2.5 release
 

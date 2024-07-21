@@ -10,6 +10,7 @@ extern "C" {
 #endif
 
 #include <linux/nvme_ioctl.h>
+#include <stdio.h>
 #include <sys/ioctl.h>
 
 /*

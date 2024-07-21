@@ -10,7 +10,8 @@ This is an implementation of liburing that's header only and trying to be standa
 - **-pedantic friendly**
 - **C and C++ compatibility** without any `extern "C"` or `extern "C++"`es
 
-This library is a fork of liburing 2.4 (or 2.5, [here's the exact commit](https://github.com/axboe/liburing/commit/b58921e0b0ae84b6f1cd22b87c66a6e91a540ec8)); we've kept up with the changes so far.
+This library is a fork of liburing 2.4 (or 2.5, [here's the exact commit](https://github.com/axboe/liburing/commit/b58921e0b0ae84b6f1cd22b87c66a6e91a540ec8)); 
+we've kept up with the changes so far (version 2.7).
 
 ### C++ users
 
@@ -28,7 +29,7 @@ Using [CPM.cmake](https://github.com/cpm-cmake/CPM.cmake) (Use a release link in
 CPMAddPackage(
         NAME liburing
         URL https://github.com/the-moisrex/liburing-hdr-only/archive/refs/heads/master.zip
-        VERSION 2.6.1
+        VERSION 2.7
         OPTIONS
             "LIBURING_CXX ON"
 )

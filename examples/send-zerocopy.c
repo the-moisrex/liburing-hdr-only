@@ -1,84 +1,88 @@
 /* SPDX-License-Identifier: MIT */
 /* based on linux-kernel/tools/testing/selftests/net/msg_zerocopy.c */
-#include "../liburing/liburing.h"
-
-#include <arpa/inet.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
 #include <assert.h>
 #include <errno.h>
-#include <fcntl.h>
 #include <limits.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <stdbool.h>
+#include <stdarg.h>
+#include <string.h>
+#include <pthread.h>
+
+#include <poll.h>
+#include <sched.h>
+#include <arpa/inet.h>
 #include <linux/if_packet.h>
 #include <linux/ipv6.h>
-#include <linux/mman.h>
 #include <linux/socket.h>
 #include <linux/sockios.h>
 #include <net/ethernet.h>
 #include <net/if.h>
-#include <netinet/in.h>
 #include <netinet/ip.h>
+#include <netinet/in.h>
 #include <netinet/ip6.h>
 #include <netinet/tcp.h>
 #include <netinet/udp.h>
-#include <poll.h>
-#include <pthread.h>
-#include <sched.h>
-#include <stdarg.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/ioctl.h>
-#include <sys/mman.h>
+#include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/resource.h>
+#include <sys/un.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <unistd.h>
+#include <sys/mman.h>
+#include <linux/mman.h>
 #include <signal.h>
 
+#include "liburing.h"
 
 #define ZC_TAG 0xfffffffULL
 #define MAX_SUBMIT_NR 512
-#define MAX_THREADS   100
+#define MAX_THREADS 100
 
 struct thread_data {
-    pthread_t               thread;
-    void*                   ret;
-    int                     idx;
-    unsigned long long      packets;
-    unsigned long long      bytes;
+	pthread_t thread;
+	void *ret;
+	int idx;
+	unsigned long long packets;
+	unsigned long long bytes;
 	unsigned long long dt_ms;
-    struct sockaddr_storage dst_addr;
-    int                     fd;
+	struct sockaddr_storage dst_addr;
+	int fd;
 };
 
-static bool     cfg_reg_ringfd    = true;
-static bool     cfg_fixed_files   = 1;
-static bool     cfg_zc            = 1;
-static int      cfg_nr_reqs       = 8;
-static bool     cfg_fixed_buf     = 1;
-static bool     cfg_hugetlb       = 0;
-static bool     cfg_defer_taskrun = 0;
-static int      cfg_cpu           = -1;
-static bool     cfg_rx            = 0;
-static unsigned cfg_nr_threads    = 1;
+static bool cfg_reg_ringfd = true;
+static bool cfg_fixed_files = 1;
+static bool cfg_zc = 1;
+static int  cfg_nr_reqs = 8;
+static bool cfg_fixed_buf = 1;
+static bool cfg_hugetlb = 0;
+static bool cfg_defer_taskrun = 0;
+static int  cfg_cpu = -1;
+static bool cfg_rx = 0;
+static unsigned  cfg_nr_threads = 1;
 
-static int cfg_family = PF_UNSPEC;
-static int cfg_type   = 0;
-static int cfg_payload_len;
-static int cfg_port       = 8000;
-static int cfg_runtime_ms = 4200;
+static int  cfg_family		= PF_UNSPEC;
+static int  cfg_type		= 0;
+static int  cfg_payload_len;
+static int  cfg_port		= 8000;
+static int  cfg_runtime_ms	= 4200;
+static bool cfg_rx_poll		= false;
 
 static socklen_t cfg_alen;
-static char*     str_addr = NULL;
+static char *str_addr = NULL;
 
-static char               payload_buf[IP_MAXPACKET] __attribute__((aligned(4096)));
-static char*              payload;
+static char payload_buf[IP_MAXPACKET] __attribute__((aligned(4096)));
+static char *payload;
 static struct thread_data threads[MAX_THREADS];
-static pthread_barrier_t  barrier;
+static pthread_barrier_t barrier;
 
 static bool should_stop = false;
 
@@ -367,6 +371,17 @@ static void do_tx(struct thread_data *td, int domain, int type, int protocol)
 	if (ret)
 		t_error(1, ret, "io_uring: buffer registration");
 
+	if (cfg_rx_poll) {
+		struct io_uring_sqe *sqe;
+
+		sqe = io_uring_get_sqe(&ring);
+		io_uring_prep_poll_add(sqe, fd, POLLIN);
+
+		ret = io_uring_submit(&ring);
+		if (ret != 1)
+			t_error(1, ret, "submit poll");
+	}
+
 	pthread_barrier_wait(&barrier);
 
 	tstart = gettimeofday_ms();
@@ -501,7 +516,7 @@ static void parse_opts(int argc, char **argv)
 
 	cfg_payload_len = max_payload_len;
 
-	while ((c = getopt(argc, argv, "46D:p:s:t:n:z:b:l:dC:T:R")) != -1) {
+	while ((c = getopt(argc, argv, "46D:p:s:t:n:z:b:l:dC:T:Ry")) != -1) {
 		switch (c) {
 		case '4':
 			if (cfg_family != PF_UNSPEC)
@@ -552,6 +567,9 @@ static void parse_opts(int argc, char **argv)
 			break;
 		case 'R':
 			cfg_rx = 1;
+			break;
+		case 'y':
+			cfg_rx_poll = 1;
 			break;
 		}
 	}
