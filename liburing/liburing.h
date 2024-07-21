@@ -545,13 +545,17 @@ IOURINGINLINE int io_uring_unregister_buf_ring(struct io_uring* ring, int bgid) 
 
 IOURINGINLINE int io_uring_buf_ring_head(struct io_uring *ring, int buf_group, uint16_t *head) noexcept {
     struct io_uring_buf_status buf_status = {
-        .buf_group	= buf_group,
+        .buf_group	= uring_static_cast(__u32, buf_group),
+		.head = 0,
+#ifdef __cplusplus
+	    .resv{}
+#endif
     };
     const int ret = do_register(ring, IORING_REGISTER_PBUF_STATUS, &buf_status, 1);
     if (ret) {
         return ret;
     }
-    *head = buf_status.head;
+    *head = uring_static_cast(uint16_t, buf_status.head);
     return 0;
 }
 
@@ -2342,14 +2346,14 @@ IOURINGINLINE void io_uring_prep_fadvise64(struct io_uring_sqe *sqe, int fd,
 					 __u64 offset, off_t len, int advice) noexcept
 {
 	io_uring_prep_rw(IORING_OP_FADVISE, sqe, fd, nullptr, 0, offset);
-	sqe->addr = len;
+	sqe->addr = uring_static_cast(__u64, len);
 	sqe->fadvise_advice = uring_static_cast(__u32, advice);
 }
 
 IOURINGINLINE void io_uring_prep_madvise64(struct io_uring_sqe *sqe, void *addr,
 					 off_t length, int advice) noexcept
 {
-	io_uring_prep_rw(IORING_OP_MADVISE, sqe, -1, addr, 0, length);
+	io_uring_prep_rw(IORING_OP_MADVISE, sqe, -1, addr, 0, uring_static_cast(__u64, length));
 	sqe->fadvise_advice = uring_static_cast(__u32, advice);
 }
 
