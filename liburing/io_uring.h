@@ -329,6 +329,8 @@ enum io_uring_op {
     IORING_OP_FUTEX_WAITV,
 	IORING_OP_FIXED_FD_INSTALL,
 	IORING_OP_FTRUNCATE,
+	IORING_OP_BIND,
+	IORING_OP_LISTEN,
 
     /* this goes last, obviously */
     IORING_OP_LAST,
@@ -387,7 +389,7 @@ enum io_uring_op {
  * ASYNC_CANCEL flags.
  *
  * IORING_ASYNC_CANCEL_ALL	Cancel all requests that match the given key
- * IORING_ASYNC_CANCEL_FD	Key off 'fd' for cancelation rather than the
+ * IORING_ASYNC_CANCEL_FD	  Key off 'fd' for cancelation rather than the
  *				request 'user_data'
  * IORING_ASYNC_CANCEL_ANY	Match any request
  * IORING_ASYNC_CANCEL_FD_FIXED	'fd' passed in is a fixed descriptor
