@@ -84,11 +84,13 @@ int main(int argc, char* argv[]) {
 
     vecs = t_create_buffers(BUFFERS, BS);
 
-    fd = open(fname, O_RDONLY | O_DIRECT);
-    if (fd < 0) {
-        perror("open");
-        return -1;
-    }
+	fd = open(fname, O_RDONLY | O_DIRECT);
+	if (fd < 0) {
+		if (errno == EPERM || errno == EACCES)
+			return T_EXIT_SKIP;
+		perror("open");
+		return -1;
+	}
 
     if (fname != argv[1])
         unlink(fname);

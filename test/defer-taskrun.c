@@ -185,22 +185,22 @@ static int test_exec(const char* filename) {
     if (ret)
         return ret;
 
-    if (filename) {
-        fd = open(filename, O_RDONLY | O_DIRECT);
-        if (fd < 0 && errno == EINVAL)
-            return T_EXIT_SKIP;
-    } else {
-        t_create_file(EXEC_FILENAME, EXEC_FILESIZE);
-        fd = open(EXEC_FILENAME, O_RDONLY | O_DIRECT);
-        if (fd < 0 && errno == EINVAL) {
-            unlink(EXEC_FILENAME);
-            return T_EXIT_SKIP;
-        }
-        unlink(EXEC_FILENAME);
-    }
-    buff = (char*) malloc(EXEC_FILESIZE);
-    CHECK(posix_memalign((void**) &buff, 4096, EXEC_FILESIZE) == 0);
-    CHECK(buff);
+	if (filename) {
+		fd = open(filename, O_RDONLY | O_DIRECT);
+		if (fd < 0 && (errno == EINVAL || errno == EPERM || errno == EACCES))
+			return T_EXIT_SKIP;
+	} else {
+		t_create_file(EXEC_FILENAME, EXEC_FILESIZE);
+		fd = open(EXEC_FILENAME, O_RDONLY | O_DIRECT);
+		if (fd < 0 && (errno == EINVAL || errno == EPERM || errno == EACCES)) {
+			unlink(EXEC_FILENAME);
+			return T_EXIT_SKIP;
+		}
+		unlink(EXEC_FILENAME);
+	}
+	buff = (char*)malloc(EXEC_FILESIZE);
+	CHECK(posix_memalign((void **)&buff, 4096, EXEC_FILESIZE) == 0);
+	CHECK(buff);
 
     CHECK(fd >= 0);
     io_uring_prep_read(io_uring_get_sqe(&ring), fd, buff, EXEC_FILESIZE, 0);

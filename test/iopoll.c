@@ -72,29 +72,29 @@ __test_io(const char* file, struct io_uring* ring, int write, int sqthread, int 
         open_flags = O_RDONLY;
     open_flags |= O_DIRECT;
 
-    if (fixed) {
-        ret = t_register_buffers(ring, vecs, BUFFERS);
-        if (ret == T_SETUP_SKIP)
-            return 0;
-        if (ret != T_SETUP_OK) {
-            fprintf(stderr, "buffer reg failed: %d\n", ret);
-            goto err;
-        }
-    }
-    fd = open(file, open_flags);
-    if (fd < 0) {
-        if (errno == EINVAL)
-            return 0;
-        perror("file open");
-        goto err;
-    }
-    if (sqthread) {
-        ret = io_uring_register_files(ring, &fd, 1);
-        if (ret) {
-            fprintf(stderr, "file reg failed: %d\n", ret);
-            goto err;
-        }
-    }
+	if (fixed) {
+		ret = t_register_buffers(ring, vecs, BUFFERS);
+		if (ret == T_SETUP_SKIP)
+			return 0;
+		if (ret != T_SETUP_OK) {
+			fprintf(stderr, "buffer reg failed: %d\n", ret);
+			goto err;
+		}
+	}
+	fd = open(file, open_flags);
+	if (fd < 0) {
+		if (errno == EINVAL || errno == EPERM || errno == EACCES)
+			return 0;
+		perror("file open");
+		goto err;
+	}
+	if (sqthread) {
+		ret = io_uring_register_files(ring, &fd, 1);
+		if (ret) {
+			fprintf(stderr, "file reg failed: %d\n", ret);
+			goto err;
+		}
+	}
 
     offset = 0;
     for (i = 0; i < BUFFERS; i++) {
@@ -215,15 +215,15 @@ static int test_io_uring_cqe_peek(const char* file) {
         return 1;
     }
 
-    fd = open(file, O_RDONLY | O_DIRECT);
-    if (fd < 0) {
-        if (errno == EINVAL) {
-            io_uring_queue_exit(&ring);
-            return T_EXIT_SKIP;
-        }
-        perror("file open");
-        goto err;
-    }
+	fd = open(file, O_RDONLY | O_DIRECT);
+	if (fd < 0) {
+		if (errno == EINVAL || errno == EPERM || errno == EACCES) {
+			io_uring_queue_exit(&ring);
+			return T_EXIT_SKIP;
+		}
+		perror("file open");
+		goto err;
+	}
 
     for (i = 0; i < BUFFERS; i++) {
         struct io_uring_sqe* sqe;
@@ -285,14 +285,14 @@ static int test_io_uring_submit_enters(const char* file) {
         return 1;
     }
 
-    open_flags = O_WRONLY | O_DIRECT;
-    fd         = open(file, open_flags);
-    if (fd < 0) {
-        if (errno == EINVAL)
-            return T_EXIT_SKIP;
-        perror("file open");
-        goto err;
-    }
+	open_flags = O_WRONLY | O_DIRECT;
+	fd = open(file, open_flags);
+	if (fd < 0) {
+		if (errno == EINVAL || errno == EPERM || errno == EACCES)
+			return T_EXIT_SKIP;
+		perror("file open");
+		goto err;
+	}
 
     for (i = 0; i < BUFFERS; i++) {
         struct io_uring_sqe* sqe;

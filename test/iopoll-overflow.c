@@ -87,16 +87,16 @@ int main(int argc, char* argv[]) {
         t_create_file(fname, FILE_SIZE);
     }
 
-    fd = open(fname, O_RDONLY | O_DIRECT);
-    if (fd < 0) {
-        if (errno == EINVAL) {
-            if (fname != argv[1])
-                unlink(fname);
-            return T_EXIT_SKIP;
-        }
-        perror("open");
-        goto err;
-    }
+	fd = open(fname, O_RDONLY | O_DIRECT);
+	if (fd < 0) {
+		if (errno == EINVAL || errno == EACCES || errno == EPERM) {
+			if (fname != argv[1])
+				unlink(fname);
+			return T_EXIT_SKIP;
+		}
+		perror("open");
+		goto err;
+	}
 
     vecs = t_create_buffers(BUFFERS, BS);
 

@@ -454,6 +454,7 @@ IOURINGINLINE int io_uring_enable_rings(struct io_uring* ring) noexcept {
     return do_register(ring, IORING_REGISTER_ENABLE_RINGS, nullptr, 0);
 }
 
+#ifdef _GNU_SOURCE
 IOURINGINLINE int
 io_uring_register_iowq_aff(struct io_uring* ring, size_t cpusz, const cpu_set_t* mask) noexcept {
     if (cpusz >= (1U << 31))
@@ -461,6 +462,7 @@ io_uring_register_iowq_aff(struct io_uring* ring, size_t cpusz, const cpu_set_t*
 
     return do_register(ring, IORING_REGISTER_IOWQ_AFF, mask, uring_static_cast(unsigned int, cpusz));
 }
+#endif
 
 IOURINGINLINE int io_uring_unregister_iowq_aff(struct io_uring* ring) noexcept {
     return do_register(ring, IORING_UNREGISTER_IOWQ_AFF, nullptr, 0);
@@ -528,6 +530,7 @@ IOURINGINLINE int io_uring_close_ring_fd(struct io_uring* ring) noexcept {
 IOURINGINLINE int io_uring_register_buf_ring(struct io_uring*                 ring,
                                              struct io_uring_buf_reg*         reg,
                                              uring__maybe_unused unsigned int flags) noexcept {
+	reg->flags |= flags;
     return do_register(ring, IORING_REGISTER_PBUF_RING, reg, 1);
 }
 
@@ -582,6 +585,12 @@ IOURINGINLINE
 int io_uring_unregister_napi(struct io_uring *ring, struct io_uring_napi *napi) noexcept
 {
 	return do_register(ring, IORING_UNREGISTER_NAPI, napi, 1);
+}
+
+IOURINGINLINE int io_uring_register_clock(struct io_uring *ring,
+			    struct io_uring_clock_register *arg) noexcept
+{
+	return do_register(ring, IORING_REGISTER_CLOCK, arg, 0);
 }
 
 /**
@@ -1372,11 +1381,11 @@ IOURINGINLINE int io_uring_wait_cqes_new(struct io_uring*          ring,
                                          struct io_uring_cqe**     cqe_ptr,
                                          unsigned                  wait_nr,
                                          struct __kernel_timespec* ts,
+				  						 unsigned int min_wait_usec,
                                          sigset_t*                 sigmask) noexcept {
     struct io_uring_getevents_arg arg = {
       .sigmask    = uring_reinterpret_cast(unsigned long, sigmask),
       .sigmask_sz = _NSIG / 8,
-      .pad        = 0,
       .ts         = uring_reinterpret_cast(unsigned long, ts),
     };
     struct get_data data = {.submit    = 0,
@@ -1385,6 +1394,9 @@ IOURINGINLINE int io_uring_wait_cqes_new(struct io_uring*          ring,
                             .sz        = sizeof(arg),
                             .has_ts    = ts != nullptr,
                             .arg       = &arg};
+
+	if (min_wait_usec && ring->features & IORING_FEAT_MIN_TIMEOUT)
+		arg.min_wait_usec = min_wait_usec;
 
     return internal_io_uring_get_cqe(ring, cqe_ptr, &data);
 }
@@ -1520,7 +1532,7 @@ IOURINGINLINE int io_uring_wait_cqes(struct io_uring*          ring,
 
     if (ts) {
         if (ring->features & IORING_FEAT_EXT_ARG)
-            return io_uring_wait_cqes_new(ring, cqe_ptr, wait_nr, ts, sigmask);
+            return io_uring_wait_cqes_new(ring, cqe_ptr, wait_nr, ts, 0, sigmask);
         to_submit = internal__io_uring_submit_timeout(ring, wait_nr, ts);
         if (to_submit < 0)
             return to_submit;
@@ -1657,18 +1669,29 @@ IOURINGINLINE int internal__io_uring_submit_timeout(struct io_uring*          ri
     return uring_static_cast(int, internal__io_uring_flush_sq(ring));
 }
 
-IOURINGINLINE int io_uring_submit_and_wait_timeout(struct io_uring*          ring,
-                                                   struct io_uring_cqe**     cqe_ptr,
-                                                   unsigned                  wait_nr,
-                                                   struct __kernel_timespec* ts,
-                                                   sigset_t*                 sigmask) noexcept {
+
+IOURINGINLINE int io_uring_wait_cqes_min_timeout(struct io_uring *ring,
+				   struct io_uring_cqe **cqe_ptr,
+				   unsigned wait_nr,
+				   struct __kernel_timespec *ts,
+				   unsigned int min_wait_usec, sigset_t *sigmask) noexcept
+{
+	return io_uring_wait_cqes_new(ring, cqe_ptr, wait_nr, ts, min_wait_usec, sigmask);
+}
+
+
+static int internal__io_uring_submit_and_wait_timeout(struct io_uring *ring,
+			struct io_uring_cqe **cqe_ptr, unsigned wait_nr,
+			struct __kernel_timespec *ts,
+			unsigned int min_wait, sigset_t *sigmask)
+{
     int to_submit = 0;
 
     if (ts) {
         if (ring->features & IORING_FEAT_EXT_ARG) {
             struct io_uring_getevents_arg arg  = {.sigmask    = uring_reinterpret_cast(unsigned long, sigmask),
                                                   .sigmask_sz = _NSIG / 8,
-                                                  .pad        = 0,
+												  .min_wait_usec	= min_wait,
                                                   .ts         = uring_reinterpret_cast(unsigned long, ts)};
             struct get_data               data = {.submit    = internal__io_uring_flush_sq(ring),
                                                   .wait_nr   = wait_nr,
@@ -1690,6 +1713,27 @@ IOURINGINLINE int io_uring_submit_and_wait_timeout(struct io_uring*          rin
                                       uring_static_cast(unsigned, to_submit),
                                       wait_nr,
                                       sigmask);
+}
+
+IOURINGINLINE int io_uring_submit_and_wait_min_timeout(struct io_uring *ring,
+					 struct io_uring_cqe **cqe_ptr,
+					 unsigned wait_nr,
+					 struct __kernel_timespec *ts,
+					 unsigned min_wait,
+					 sigset_t *sigmask) noexcept
+{
+	if (!(ring->features & IORING_FEAT_MIN_TIMEOUT))
+		return -EINVAL;
+	return internal__io_uring_submit_and_wait_timeout(ring, cqe_ptr, wait_nr, ts, min_wait, sigmask);
+}
+
+IOURINGINLINE int io_uring_submit_and_wait_timeout(struct io_uring *ring,
+				     struct io_uring_cqe **cqe_ptr,
+				     unsigned wait_nr,
+				     struct __kernel_timespec *ts,
+				     sigset_t *sigmask) noexcept
+{
+	return internal__io_uring_submit_and_wait_timeout(ring, cqe_ptr, wait_nr, ts, 0, sigmask);
 }
 
 
@@ -2316,6 +2360,7 @@ IOURINGINLINE void io_uring_prep_read_multishot(struct io_uring_sqe* sqe,
                                                 int                  buf_group) noexcept {
     io_uring_prep_rw(IORING_OP_READ_MULTISHOT, sqe, fd, nullptr, nbytes, offset);
     sqe->buf_group = uring_static_cast(__u16, buf_group);
+	sqe->flags = IOSQE_BUFFER_SELECT;
 }
 
 IOURINGINLINE void io_uring_prep_write(struct io_uring_sqe* sqe,
@@ -2892,11 +2937,13 @@ IOURINGINLINE void io_uring_prep_fixed_fd_install(struct io_uring_sqe *sqe,
 	sqe->install_fd_flags = flags;
 }
 
+#ifdef _GNU_SOURCE
 IOURINGINLINE void io_uring_prep_ftruncate(struct io_uring_sqe *sqe,
 				       int fd, loff_t len) noexcept
 {
 	io_uring_prep_rw(IORING_OP_FTRUNCATE, sqe, fd, 0, 0, uring_static_cast(__u64, len));
 }
+#endif
 
 /*
  * Returns number of unconsumed (if SQPOLL) or unsubmitted entries exist in

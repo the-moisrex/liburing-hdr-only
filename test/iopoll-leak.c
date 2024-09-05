@@ -23,11 +23,13 @@ static int do_iopoll(const char* fname) {
     struct iovec*        iov;
     int                  fd;
 
-    fd = open(fname, O_RDONLY | O_DIRECT);
-    if (fd < 0) {
-        perror("open");
-        return T_EXIT_SKIP;
-    }
+	fd = open(fname, O_RDONLY | O_DIRECT);
+	if (fd < 0) {
+		if (errno == EINVAL || errno == EPERM || errno == EACCES)
+			return T_EXIT_SKIP;
+		perror("open");
+		return T_EXIT_SKIP;
+	}
 
     iov = t_create_buffers(1, 4096);
 

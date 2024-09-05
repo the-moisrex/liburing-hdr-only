@@ -49,17 +49,19 @@ static int test(const char* filename, int dio, int async) {
         return 1;
     }
 
-    if (dio) {
-        fd = open(filename, O_DIRECT | O_RDONLY);
-        if (fd < 0 && errno == EINVAL)
-            return T_EXIT_SKIP;
-    } else {
-        fd = open(filename, O_RDONLY);
-    }
-    if (fd < 0) {
-        perror("open");
-        return 1;
-    }
+	if (dio) {
+		fd = open(filename, O_DIRECT | O_RDONLY);
+		if (fd < 0 && errno == EINVAL)
+			return T_EXIT_SKIP;
+	} else {
+		fd = open(filename, O_RDONLY);
+	}
+	if (fd < 0) {
+		if (errno == EPERM || errno == EACCES)
+			return T_EXIT_SKIP;
+		perror("open");
+		return 1;
+	}
 
     posix_fadvise(fd, 0, FSIZE, POSIX_FADV_DONTNEED);
 
@@ -139,21 +141,23 @@ int main(int argc, char* argv[]) {
         do_unlink = 1;
     }
 
-    fd = open(fname, O_WRONLY);
-    if (fd < 0) {
-        perror("open");
-        goto err;
-    }
-    for (i = 0; i < NR_BUFS; i++) {
-        memset(buf, i + 1, BUF_SIZE);
-        ret = write(fd, buf, BUF_SIZE);
-        if (ret != BUF_SIZE) {
-            fprintf(stderr, "bad file prep write\n");
-            close(fd);
-            goto err;
-        }
-    }
-    close(fd);
+	fd = open(fname, O_WRONLY);
+	if (fd < 0) {
+		if (errno == EPERM || errno == EACCES)
+			return T_EXIT_SKIP;
+		perror("open");
+		goto err;
+	}
+	for (i = 0; i < NR_BUFS; i++) {
+		memset(buf, i + 1, BUF_SIZE);
+		ret = write(fd, buf, BUF_SIZE);
+		if (ret != BUF_SIZE) {
+			fprintf(stderr, "bad file prep write\n");
+			close(fd);
+			goto err;
+		}
+	}
+	close(fd);
 
     ret = test(fname, 1, 0);
     if (ret == T_EXIT_FAIL) {

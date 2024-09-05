@@ -15,11 +15,51 @@
 
 static int seq;
 
-static int test_single_nop(struct io_uring* ring, unsigned req_flags) {
-    struct io_uring_cqe* cqe;
-    struct io_uring_sqe* sqe;
-    int                  ret;
-    bool                 cqe32 = (ring->flags & IORING_SETUP_CQE32);
+static int test_nop_inject(struct io_uring *ring, unsigned req_flags)
+{
+	struct io_uring_cqe *cqe;
+	struct io_uring_sqe *sqe;
+	int ret;
+
+	sqe = io_uring_get_sqe(ring);
+	if (!sqe) {
+		fprintf(stderr, "get sqe failed\n");
+		goto err;
+	}
+
+	io_uring_prep_nop(sqe);
+	sqe->user_data = ++seq;
+	sqe->nop_flags = IORING_NOP_INJECT_RESULT;
+	sqe->flags |= req_flags;
+	sqe->len = -EFAULT;
+
+	ret = io_uring_submit(ring);
+	if (ret <= 0) {
+		fprintf(stderr, "sqe submit failed: %d\n", ret);
+		goto err;
+	}
+
+	ret = io_uring_wait_cqe(ring, &cqe);
+	if (ret < 0) {
+		fprintf(stderr, "wait completion %d\n", ret);
+		goto err;
+	}
+	if (cqe->res != -EFAULT) {
+		fprintf(stderr, "expected injected result, got %d\n", cqe->res);
+		goto err;
+	}
+	io_uring_cqe_seen(ring, cqe);
+	return 0;
+err:
+	return 1;
+}
+
+static int test_single_nop(struct io_uring *ring, unsigned req_flags)
+{
+	struct io_uring_cqe *cqe;
+	struct io_uring_sqe *sqe;
+	int ret;
+	bool cqe32 = (ring->flags & IORING_SETUP_CQE32);
 
     sqe = io_uring_get_sqe(ring);
     if (!sqe) {
@@ -142,12 +182,17 @@ static int test_ring(unsigned flags) {
             goto err;
         }
 
-        ret = test_barrier_nop(&ring, req_flags);
-        if (ret) {
-            fprintf(stderr, "test_barrier_nop failed\n");
-            goto err;
-        }
-    }
+		ret = test_barrier_nop(&ring, req_flags);
+		if (ret) {
+			fprintf(stderr, "test_barrier_nop failed\n");
+			goto err;
+		}
+		ret = test_nop_inject(&ring, req_flags);
+		if (ret) {
+			fprintf(stderr, "test_nop_inject failed\n");
+			goto err;
+		}
+	}
 err:
     io_uring_queue_exit(&ring);
     return ret;

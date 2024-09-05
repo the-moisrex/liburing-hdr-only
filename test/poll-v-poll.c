@@ -14,9 +14,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/epoll.h>
-#include <sys/select.h>
-#include <sys/wait.h>
-#include <unistd.h>
+
+#include "liburing.h"
+#include "helpers.h"
+
 struct thread_data {
     struct io_uring* ring;
     int              fd;
@@ -163,11 +164,13 @@ static int do_fd_test(struct io_uring* ring, const char* fname, int events) {
     pthread_t          threads[2];
     int                fd;
 
-    fd = open(fname, O_RDONLY);
-    if (fd < 0) {
-        perror("open");
-        return 1;
-    }
+	fd = open(fname, O_RDONLY);
+	if (fd < 0) {
+		if (errno == EPERM || errno == EACCES)
+			return T_EXIT_SKIP;
+		perror("open");
+		return 1;
+	}
 
     td.ring   = ring;
     td.fd     = fd;
@@ -316,11 +319,11 @@ int main(int argc, char* argv[]) {
     else
         fname = argv[0];
 
-    ret = do_fd_test(&ring, fname, POLLIN);
-    if (ret) {
-        fprintf(stderr, "fd test IN failed\n");
-        return ret;
-    }
+	ret = do_fd_test(&ring, fname, POLLIN);
+	if (ret == T_EXIT_FAIL) {
+		fprintf(stderr, "fd test IN failed\n");
+		return ret;
+	}
 
     ret = do_fd_test(&ring, fname, POLLOUT);
     if (ret) {

@@ -15,12 +15,13 @@
 
 static int no_sync_cancel;
 
-static int test_sync_cancel_timeout(struct io_uring* ring, int async) {
-    struct io_uring_sync_cancel_reg reg = {};
-    struct io_uring_sqe*            sqe;
-    struct io_uring_cqe*            cqe;
-    int                             ret, fds[2], to_prep;
-    char                            buf[32];
+static int test_sync_cancel_timeout(struct io_uring *ring, int async, int by_op)
+{
+	struct io_uring_sync_cancel_reg reg = { };
+	struct io_uring_sqe *sqe;
+	struct io_uring_cqe *cqe;
+	int ret, fds[2], to_prep;
+	char buf[32];
 
     if (pipe(fds) < 0) {
         perror("pipe");
@@ -42,21 +43,22 @@ static int test_sync_cancel_timeout(struct io_uring* ring, int async) {
 
     usleep(10000);
 
-    reg.addr            = 0x89;
-    reg.timeout.tv_nsec = 1;
-    ret                 = io_uring_register_sync_cancel(ring, &reg);
-    if (async) {
-        /* we expect -ETIME here, but can race and get 0 */
-        if (ret != -ETIME && ret != 0) {
-            fprintf(stderr, "sync_cancel=%d\n", ret);
-            return 1;
-        }
-    } else {
-        if (ret < 0) {
-            fprintf(stderr, "sync_cancel=%d\n", ret);
-            return 1;
-        }
-    }
+	reg.flags = IORING_ASYNC_CANCEL_OP;
+	reg.opcode = IORING_OP_READ;
+	reg.timeout.tv_nsec = 1;
+	ret = io_uring_register_sync_cancel(ring, &reg);
+	if (async) {
+		/* we expect -ETIME here, but can race and get 0 */
+		if (ret != -ETIME && ret != 0) {
+			fprintf(stderr, "sync_cancel=%d\n", ret);
+			return 1;
+		}
+	} else {
+		if (ret < 0) {
+			fprintf(stderr, "sync_cancel=%d\n", ret);
+			return 1;
+		}
+	}
 
     /*
      * we could _almost_ use peek_cqe() here, but there is still
@@ -78,12 +80,14 @@ static int test_sync_cancel_timeout(struct io_uring* ring, int async) {
     return 0;
 }
 
-static int test_sync_cancel(struct io_uring* ring, int async, int nr_all, int use_fd) {
-    struct io_uring_sync_cancel_reg reg = {};
-    struct io_uring_sqe*            sqe;
-    struct io_uring_cqe*            cqe;
-    int                             ret, fds[2], to_prep, i;
-    char                            buf[32];
+static int test_sync_cancel(struct io_uring *ring, int async, int nr_all,
+			    int use_fd, int by_op)
+{
+	struct io_uring_sync_cancel_reg reg = { };
+	struct io_uring_sqe *sqe;
+	struct io_uring_cqe *cqe;
+	int ret, fds[2], to_prep, i;
+	char buf[32];
 
     if (pipe(fds) < 0) {
         perror("pipe");
@@ -164,68 +168,94 @@ int main(int argc, char* argv[]) {
     else if (ret != T_SETUP_OK)
         return ret;
 
-    ret = test_sync_cancel(&ring, 0, 0, 0);
-    if (ret) {
-        fprintf(stderr, "test_sync_cancel 0 0 0 failed\n");
-        return T_EXIT_FAIL;
-    }
-    if (no_sync_cancel)
-        return T_EXIT_SKIP;
+	ret = test_sync_cancel(&ring, 0, 0, 0, 0);
+	if (ret) {
+		fprintf(stderr, "test_sync_cancel 0 0 0 failed\n");
+		return T_EXIT_FAIL;
+	}
+	if (no_sync_cancel)
+		return T_EXIT_SKIP;
 
-    ret = test_sync_cancel(&ring, 1, 0, 0);
-    if (ret) {
-        fprintf(stderr, "test_sync_cancel 1 0 0 failed\n");
-        return T_EXIT_FAIL;
-    }
+	ret = test_sync_cancel(&ring, 0, 0, 0, 1);
+	if (ret) {
+		fprintf(stderr, "test_sync_cancel 0 0 1 failed\n");
+		return T_EXIT_FAIL;
+	}
 
-    ret = test_sync_cancel(&ring, 0, 1, 0);
-    if (ret) {
-        fprintf(stderr, "test_sync_cancel 0 1 0 failed\n");
-        return T_EXIT_FAIL;
-    }
+	ret = test_sync_cancel(&ring, 1, 0, 0, 0);
+	if (ret) {
+		fprintf(stderr, "test_sync_cancel 1 0 0 0 failed\n");
+		return T_EXIT_FAIL;
+	}
 
-    ret = test_sync_cancel(&ring, 1, 1, 0);
-    if (ret) {
-        fprintf(stderr, "test_sync_cancel 1 1 0 failed\n");
-        return T_EXIT_FAIL;
-    }
+	ret = test_sync_cancel(&ring, 1, 0, 0, 1);
+	if (ret) {
+		fprintf(stderr, "test_sync_cancel 1 0 0 1 failed\n");
+		return T_EXIT_FAIL;
+	}
 
-    ret = test_sync_cancel(&ring, 0, 0, 1);
-    if (ret) {
-        fprintf(stderr, "test_sync_cancel 0 0 1 failed\n");
-        return T_EXIT_FAIL;
-    }
 
-    ret = test_sync_cancel(&ring, 1, 0, 1);
-    if (ret) {
-        fprintf(stderr, "test_sync_cancel 1 0 1 failed\n");
-        return T_EXIT_FAIL;
-    }
+	ret = test_sync_cancel(&ring, 0, 1, 0, 0);
+	if (ret) {
+		fprintf(stderr, "test_sync_cancel 0 1 0 0 failed\n");
+		return T_EXIT_FAIL;
+	}
 
-    ret = test_sync_cancel(&ring, 0, 1, 1);
-    if (ret) {
-        fprintf(stderr, "test_sync_cancel 0 1 1 failed\n");
-        return T_EXIT_FAIL;
-    }
+	ret = test_sync_cancel(&ring, 0, 1, 0, 1);
+	if (ret) {
+		fprintf(stderr, "test_sync_cancel 0 1 0 1 failed\n");
+		return T_EXIT_FAIL;
+	}
 
-    ret = test_sync_cancel(&ring, 1, 1, 1);
-    if (ret) {
-        fprintf(stderr, "test_sync_cancel 1 1 1 failed\n");
-        return T_EXIT_FAIL;
-    }
 
-    ret = test_sync_cancel_timeout(&ring, 0);
-    if (ret) {
-        fprintf(stderr, "test_sync_cancel_timeout 0\n");
-        return T_EXIT_FAIL;
-    }
+	ret = test_sync_cancel(&ring, 1, 1, 0, 0);
+	if (ret) {
+		fprintf(stderr, "test_sync_cancel 1 1 0 0 failed\n");
+		return T_EXIT_FAIL;
+	}
 
-    /* must be last, leaves request */
-    ret = test_sync_cancel_timeout(&ring, 1);
-    if (ret) {
-        fprintf(stderr, "test_sync_cancel_timeout 1\n");
-        return T_EXIT_FAIL;
-    }
+	ret = test_sync_cancel(&ring, 0, 0, 1, 0);
+	if (ret) {
+		fprintf(stderr, "test_sync_cancel 0 0 1 0 failed\n");
+		return T_EXIT_FAIL;
+	}
+
+	ret = test_sync_cancel(&ring, 1, 0, 1, 0);
+	if (ret) {
+		fprintf(stderr, "test_sync_cancel 1 0 1 0 failed\n");
+		return T_EXIT_FAIL;
+	}
+
+	ret = test_sync_cancel(&ring, 0, 1, 1, 0);
+	if (ret) {
+		fprintf(stderr, "test_sync_cancel 0 1 1 0 failed\n");
+		return T_EXIT_FAIL;
+	}
+
+	ret = test_sync_cancel(&ring, 1, 1, 1, 0);
+	if (ret) {
+		fprintf(stderr, "test_sync_cancel 1 1 1 0 failed\n");
+		return T_EXIT_FAIL;
+	}
+
+	ret = test_sync_cancel_timeout(&ring, 0, 0);
+	if (ret) {
+		fprintf(stderr, "test_sync_cancel_timeout 0 0\n");
+		return T_EXIT_FAIL;
+	}
+
+	ret = test_sync_cancel_timeout(&ring, 0, 1);
+	if (ret) {
+		fprintf(stderr, "test_sync_cancel_timeout 0 1\n");
+		return T_EXIT_FAIL;
+	}
+
+	/* must be last, leaves request */
+	ret = test_sync_cancel_timeout(&ring, 1, 0);
+	if (ret) {
+		fprintf(stderr, "test_sync_cancel_timeout 1\n");
+		return T_EXIT_FAIL;
+	}
 
     return T_EXIT_PASS;
 }

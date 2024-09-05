@@ -76,13 +76,13 @@ static int __test_io(const char*      file,
         }
     }
 
-    fd = open(file, open_flags);
-    if (fd < 0) {
-        if (errno == EINVAL)
-            return 0;
-        perror("file open");
-        goto err;
-    }
+	fd = open(file, open_flags);
+	if (fd < 0) {
+		if (errno == EINVAL || errno == EPERM || errno == EACCES)
+			return 0;
+		perror("file open");
+		goto err;
+	}
 
     if (sqthread) {
         ret = io_uring_register_files(ring, &fd, 1);
@@ -257,11 +257,13 @@ static int read_poll_link(const char* file) {
     if (ret)
         return ret;
 
-    fd = open(file, O_WRONLY);
-    if (fd < 0) {
-        perror("open");
-        return 1;
-    }
+	fd = open(file, O_WRONLY);
+	if (fd < 0) {
+		if (errno == EACCES || errno == EPERM)
+			return T_EXIT_SKIP;
+		perror("open");
+		return 1;
+	}
 
     if (pipe(fds)) {
         perror("pipe");
@@ -675,11 +677,13 @@ static int test_io_link(const char* file) {
     struct io_uring      ring;
     int                  i, j, fd, ret;
 
-    fd = open(file, O_WRONLY);
-    if (fd < 0) {
-        perror("file open");
-        goto err;
-    }
+	fd = open(file, O_WRONLY);
+	if (fd < 0) {
+		if (errno == EPERM || errno == EACCES)
+			return 0;
+		perror("file open");
+		goto err;
+	}
 
     ret = io_uring_queue_init(nr_sqes, &ring, 0);
     if (ret) {
@@ -905,11 +909,11 @@ int main(int argc, char* argv[]) {
         goto err;
     }
 
-    ret = read_poll_link(fname);
-    if (ret) {
-        fprintf(stderr, "read_poll_link failed\n");
-        goto err;
-    }
+	ret = read_poll_link(fname);
+	if (ret == T_EXIT_FAIL) {
+		fprintf(stderr, "read_poll_link failed\n");
+		goto err;
+	}
 
     ret = test_io_link(fname);
     if (ret) {

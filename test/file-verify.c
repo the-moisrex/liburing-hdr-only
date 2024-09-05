@@ -332,14 +332,16 @@ static int test(struct io_uring* ring,
         assert(!vectored && !small_vecs);
     }
 
-    flags = O_RDONLY;
-    if (!buffered)
-        flags |= O_DIRECT;
-    fd = open(fname, flags);
-    if (fd < 0) {
-        perror("open");
-        return 1;
-    }
+	flags = O_RDONLY;
+	if (!buffered)
+		flags |= O_DIRECT;
+	fd = open(fname, flags);
+	if (fd < 0) {
+		if (errno == EINVAL || errno == EPERM || errno == EACCES)
+			return T_EXIT_SKIP;
+		perror("open");
+		return 1;
+	}
 
     if (do_punch(fd))
         return 1;
@@ -493,11 +495,13 @@ static int fill_pattern(const char* fname) {
     void*        buf;
     int          fd, i;
 
-    fd = open(fname, O_WRONLY);
-    if (fd < 0) {
-        perror("open");
-        return 1;
-    }
+	fd = open(fname, O_WRONLY);
+	if (fd < 0) {
+		if (errno == EPERM || errno == EACCES)
+			return T_EXIT_SKIP;
+		perror("open");
+		return 1;
+	}
 
     val = 0;
     buf = t_malloc(4096);
@@ -546,34 +550,39 @@ int main(int argc, char* argv[]) {
         goto err;
     }
 
-    if (fill_pattern(fname))
-        goto err;
+	ret = fill_pattern(fname);
+	if (ret == T_EXIT_SKIP)
+		return T_EXIT_SKIP;
+	else if (ret)
+		goto err;
 
-    ret = test(&ring, fname, 1, 0, 0, 0, 0);
-    if (ret) {
-        fprintf(stderr, "Buffered novec test failed\n");
-        goto err;
-    }
-    ret = test(&ring, fname, 1, 0, 0, 1, 0);
-    if (ret) {
-        fprintf(stderr, "Buffered novec reg test failed\n");
-        goto err;
-    }
-    ret = test(&ring, fname, 1, 0, 0, 0, 1);
-    if (ret) {
-        fprintf(stderr, "Buffered novec provide test failed\n");
-        goto err;
-    }
-    ret = test(&ring, fname, 1, 1, 0, 0, 0);
-    if (ret) {
-        fprintf(stderr, "Buffered vec test failed\n");
-        goto err;
-    }
-    ret = test(&ring, fname, 1, 1, 1, 0, 0);
-    if (ret) {
-        fprintf(stderr, "Buffered small vec test failed\n");
-        goto err;
-    }
+	ret = test(&ring, fname, 1, 0, 0, 0, 0);
+	if (ret == T_EXIT_SKIP)
+		return T_EXIT_SKIP;
+	if (ret) {
+		fprintf(stderr, "Buffered novec test failed\n");
+		goto err;
+	}
+	ret = test(&ring, fname, 1, 0, 0, 1, 0);
+	if (ret) {
+		fprintf(stderr, "Buffered novec reg test failed\n");
+		goto err;
+	}
+	ret = test(&ring, fname, 1, 0, 0, 0, 1);
+	if (ret) {
+		fprintf(stderr, "Buffered novec provide test failed\n");
+		goto err;
+	}
+	ret = test(&ring, fname, 1, 1, 0, 0, 0);
+	if (ret) {
+		fprintf(stderr, "Buffered vec test failed\n");
+		goto err;
+	}
+	ret = test(&ring, fname, 1, 1, 1, 0, 0);
+	if (ret) {
+		fprintf(stderr, "Buffered small vec test failed\n");
+		goto err;
+	}
 
     ret = test(&ring, fname, 0, 0, 0, 0, 0);
     if (ret) {

@@ -94,13 +94,15 @@ int main(int argc, char* argv[]) {
         t_create_file(fname, 4096);
     }
 
-    fd = open(fname, O_WRONLY);
-    if (do_unlink)
-        unlink(fname);
-    if (fd < 0) {
-        perror("open");
-        return 1;
-    }
+	fd = open(fname, O_WRONLY);
+	if (do_unlink)
+		unlink(fname);
+	if (fd < 0) {
+		if (errno == EPERM || errno == EACCES)
+			goto skip;
+		perror("open");
+		return 1;
+	}
 
     d.fd      = fd;
     d.ring    = &ring;
@@ -133,6 +135,9 @@ int main(int argc, char* argv[]) {
     free_g_buf();
     return d.err;
 err:
-    free_g_buf();
-    return 1;
+	free_g_buf();
+	return 1;
+skip:
+	free_g_buf();
+	return T_EXIT_SKIP;
 }

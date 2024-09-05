@@ -171,11 +171,11 @@ int main(int argc, char* argv[]) {
         if (fname != argv[1])
             unlink(fname);
 
-        if (__e == EINVAL)
-            return T_EXIT_SKIP;
-        perror("open");
-        return -1;
-    }
+		if (__e == EINVAL || __e == EPERM || __e == EACCES)
+			return T_EXIT_SKIP;
+		perror("open");
+		return -1;
+	}
 
     if (fname != argv[1])
         unlink(fname);

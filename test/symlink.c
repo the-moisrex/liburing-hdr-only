@@ -11,10 +11,13 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-static int do_symlinkat(struct io_uring* ring, const char* oldname, const char* newname) {
-    int                  ret;
-    struct io_uring_sqe* sqe;
-    struct io_uring_cqe* cqe;
+#include "liburing.h"
+
+static int do_symlinkat(struct io_uring *ring, const char *oldname, const char *newname)
+{
+	int ret;
+	struct io_uring_sqe *sqe;
+	struct io_uring_cqe *cqe;
 
     sqe = io_uring_get_sqe(ring);
     if (!sqe) {
@@ -98,6 +101,18 @@ int main(int argc, char* argv[]) {
         fprintf(stderr, "test_symlinkat no parent failed: %d\n", ret);
         goto err1;
     }
+
+	ret = do_symlinkat(&ring, target, (const char *) (uintptr_t) 0x1234);
+	if (ret != -EFAULT) {
+		fprintf(stderr, "test_symlinkat bad target failed: %d\n", ret);
+		goto err1;
+	}
+
+	ret = do_symlinkat(&ring, (const char *) (uintptr_t) 0x1234, target);
+	if (ret != -EFAULT) {
+		fprintf(stderr, "test_symlinkat bad source failed: %d\n", ret);
+		goto err1;
+	}
 
 out:
     unlinkat(AT_FDCWD, linkname, 0);

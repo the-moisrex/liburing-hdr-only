@@ -17,31 +17,12 @@
 #define LOOPS     100
 #define MIN_LOOPS 10
 
-static unsigned long long utime_since(const struct timeval* s, const struct timeval* e) {
-    long long sec, usec;
-
-    sec  = e->tv_sec - s->tv_sec;
-    usec = (e->tv_usec - s->tv_usec);
-    if (sec > 0 && usec < 0) {
-        sec--;
-        usec += 1000000;
-    }
-
-    sec *= 1000000;
-    return sec + usec;
-}
-
-static unsigned long long utime_since_now(struct timeval* tv) {
-    struct timeval end;
-
-    gettimeofday(&end, NULL);
-    return utime_since(tv, &end);
-}
-
-static int do_fadvise(struct io_uring* ring, int fd, off_t offset, off_t len, int advice) {
-    struct io_uring_sqe* sqe;
-    struct io_uring_cqe* cqe;
-    int                  ret;
+static int do_fadvise(struct io_uring *ring, int fd, off_t offset, off_t len,
+		      int advice)
+{
+	struct io_uring_sqe *sqe;
+	struct io_uring_cqe *cqe;
+	int ret;
 
     sqe = io_uring_get_sqe(ring);
     if (!sqe) {
@@ -105,11 +86,13 @@ static int test_fadvise(struct io_uring* ring, const char* filename) {
     int           fd, ret;
     char*         buf;
 
-    fd = open(filename, O_RDONLY);
-    if (fd < 0) {
-        perror("open");
-        return 1;
-    }
+	fd = open(filename, O_RDONLY);
+	if (fd < 0) {
+		if (errno == EPERM || errno == EACCES)
+			return T_EXIT_SKIP;
+		perror("open");
+		return 1;
+	}
 
     buf = t_malloc(FILE_SIZE);
 
@@ -161,19 +144,21 @@ int main(int argc, char* argv[]) {
         goto err;
     }
 
-    good = bad = 0;
-    for (i = 0; i < LOOPS; i++) {
-        ret = test_fadvise(&ring, fname);
-        if (ret == 1) {
-            fprintf(stderr, "read_fadvise failed\n");
-            goto err;
-        } else if (!ret)
-            good++;
-        else if (ret == 2)
-            bad++;
-        if (i >= MIN_LOOPS && !bad)
-            break;
-    }
+	good = bad = 0;
+	for (i = 0; i < LOOPS; i++) {
+		ret = test_fadvise(&ring, fname);
+		if (ret == T_EXIT_SKIP)
+			return T_EXIT_SKIP;
+		if (ret == 1) {
+			fprintf(stderr, "read_fadvise failed\n");
+			goto err;
+		} else if (!ret)
+			good++;
+		else if (ret == 2)
+			bad++;
+		if (i >= MIN_LOOPS && !bad)
+			break;
+	}
 
     /* too hard to reliably test, just ignore */
     if ((0) && bad > good) {

@@ -83,6 +83,7 @@ test_srcs := \
 	fc2a85cb02ef.c \
 	fd-install.c \
 	fd-pass.c \
+	fdinfo.c \
 	file-register.c \
 	files-exit-hang-poll.c \
 	files-exit-hang-timeout.c \
@@ -90,6 +91,7 @@ test_srcs := \
 	file-verify.c \
 	fixed-buf-iter.c \
 	fixed-buf-merge.c \
+	fixed-hugepage.c \
 	fixed-link.c \
 	fixed-reuse.c \
 	fpos.c \
@@ -107,22 +109,27 @@ test_srcs := \
 	io_uring_passthrough.c \
 	io_uring_register.c \
 	io_uring_setup.c \
+	kallsyms.c \
 	lfs-openat.c \
 	lfs-openat-write.c \
 	link.c \
 	link_drain.c \
 	link-timeout.c \
 	madvise.c \
+	min-timeout.c \
+	min-timeout-wait.c \
 	mkdir.c \
 	msg-ring.c \
 	msg-ring-fd.c \
 	msg-ring-flags.c \
 	msg-ring-overflow.c \
 	multicqes_drain.c \
+	napi-test.c \
 	no-mmap-inval.c \
 	nolibc.c \
 	nop-all-sizes.c \
 	nop.c \
+	ooo-file-unreg.c \
 	openat2.c \
 	open-close.c \
 	open-direct-link.c \
@@ -143,6 +150,7 @@ test_srcs := \
 	poll-race-mshot.c \
 	poll-ring.c \
 	poll-v-poll.c \
+	pollfree.c \
 	probe.c \
 	read-before-exit.c \
 	read-mshot.c \
@@ -165,6 +173,7 @@ test_srcs := \
 	rw_merge_test.c \
 	self.c \
 	recvsend_bundle.c \
+	recvsend_bundle-inc.c \
 	send_recv.c \
 	send_recvmsg.c \
 	send-zerocopy.c \
@@ -204,8 +213,10 @@ test_srcs := \
 	truncate.c \
 	tty-write-dpoll.c \
 	unlink.c \
+	uring_cmd_ublk.c \
 	version.c \
 	waitid.c \
+	wait-timeout.c \
 	wakeup-hang.c \
 	wq-aff.c \
 	xattr.c \
